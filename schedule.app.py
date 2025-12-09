@@ -236,13 +236,12 @@ with tab1:
         components.html(
             """
             <script>
-                // 嘗試滾動父層視窗 (Streamlit 主內容區域)
                 window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
             </script>
             """,
             height=0
         )
-        st.session_state.scroll_to_top = False # 重置標記
+        st.session_state.scroll_to_top = False 
 
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
@@ -256,9 +255,12 @@ with tab1:
         if 'entry_type' not in st.session_state: st.session_state['entry_type'] = MAIN_POST_TYPES[0]
         if 'entry_subtype' not in st.session_state: st.session_state['entry_subtype'] = "-- 無 --"
         if 'entry_purpose' not in st.session_state: st.session_state['entry_purpose'] = POST_PURPOSES[0]
-        if 'entry_format' not in st.session_state: st.session_state['entry_format'] = POST_FORMATS[0]
+        
+        # 修改：形式預設為空白
+        if 'entry_format' not in st.session_state: st.session_state['entry_format'] = ""
+        
         if 'entry_po' not in st.session_state: st.session_state['entry_po'] = ""
-        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = POST_OWNERS[0]
+        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = ""
         if 'entry_designer' not in st.session_state: st.session_state['entry_designer'] = ""
         
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares',
@@ -294,11 +296,12 @@ with tab1:
                 for p in selected_platforms:
                     platform_purposes[p] = single_purpose
 
-        f_format = c8.selectbox("形式", POST_FORMATS, key="entry_format")
+        # 修改：形式選項加入空白
+        f_format = c8.selectbox("形式", [""] + POST_FORMATS, key="entry_format")
 
         c9, c10, c11 = st.columns(3)
         f_po = c9.selectbox("專案負責人", [""] + PROJECT_OWNERS, key="entry_po")
-        f_owner = c10.selectbox("貼文負責人", POST_OWNERS, key="entry_owner")
+        f_owner = c10.selectbox("貼文負責人", [""] + POST_OWNERS, key="entry_owner")
         f_designer = c11.selectbox("美編", [""] + DESIGNERS, key="entry_designer")
 
         st.divider()
@@ -445,8 +448,7 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        # 修正：定義 12 個欄位的寬度 (最後一個是刪除按鈕)
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -503,8 +505,7 @@ with tab1:
             })
 
             with st.container():
-                # 修正：使用 12 個欄位
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
