@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效管家",
+    page_title="2025社群排程與成效",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -243,7 +243,7 @@ with st.sidebar:
         end_date = c2.date_input("結束", datetime.now())
 
 # --- 6. 主頁面 ---
-st.header("📅 社群排程與成效管家")
+st.header("📅 2025社群排程與成效")
 
 tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
