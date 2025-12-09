@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>社群排程與成效管家 (雲端版)</title>
+    
+    <!-- 1. React -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- 2. Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- 3. Tailwind -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 4. Firebase SDK (Modular) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, query, orderBy } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // 嘗試取得環境變數
+        const firebaseConfigRaw = typeof __firebase_config !== 'undefined' ? __firebase_config : null;
+        const appIdRaw = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        if (firebaseConfigRaw) {
+            const app = initializeApp(JSON.parse(firebaseConfigRaw));
+            window.db = getFirestore(app);
+            window.auth = getAuth(app);
+            
+            // 將 Firebase 函式掛載到 window 以便 React 元件使用
+            window.collection = collection;
+            window.doc = doc;
+            window.setDoc = setDoc;
+            window.deleteDoc = deleteDoc;
+            window.onSnapshot = onSnapshot;
+            window.query = query;
+            window.appId = appIdRaw;
+            window.isCloudEnabled = true;
+
+            // 執行登入邏輯 (優先使用 Custom Token)
+            const initAuth = async () => {
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(window.auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(window.auth);
+                    }
+                } catch (error) {
+                    console.error("Firebase Auth Error:", error);
+                }
+            };
+            
+            // 立即執行登入
+            initAuth();
+
+            // 匯出監聽器供 React 使用
+            window.onAuthStateChanged = onAuthStateChanged;
+
+        } else {
+            window.isCloudEnabled = false;
+        }
+    </script>
+
+    <style>
+        body { background-color: #fff0f5; font-family: "Microsoft JhengHei", "Heiti TC", sans-serif; }
+        .animate-fade-in-down { animation: fadeInDown 0.3s ease-out; }
+        .animate-pop-in { animation: popIn 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes fadeInDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes popIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        select { -webkit-appearance: none; -moz-appearance: none; appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ec4899' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 0.5rem center; background-size: 1em; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect, useRef } = React;
+
+        const ICONS = {
+            platforms: { 'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵', 'All': '🌈' },
+            metrics: { reach: '👀', likes: '❤️', comments: '💬', shares: '📲', rate: '📈' },
+            status: { draft: '🌱', planned: '⏰', published: '🚀' },
+            periods: { d7: '🔥', m1: '🌳' },
+            ui: { edit: '✏️', delete: '🗑️', save: '💾', export: '📤', reset: '🔄', calendar: '🗓️', chart: '📊', target: '🎯', filter: '🔎' }
+        };
+
+        const ConfirmModal = ({ isOpen, title, message, onConfirm, onCancel }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50 backdrop-blur-sm p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full animate-pop-in border-4 border-pink-100">
+                        <h3 className="text-xl font-bold text-gray-800 mb-2 text-center">{title}</h3>
+                        <p className="text-gray-600 mb-6 text-center">{message}</p>
+                        <div className="flex justify-center space-x-3">
+                            <button onClick={onCancel} className="px-5 py-2 rounded-xl bg-gray-100 text-gray-600 font-bold hover:bg-gray-200 transition-colors">取消</button>
+                            <button onClick={onConfirm} className="px-5 py-2 rounded-xl bg-red-400 text-white font-bold hover:opacity-90 transition-colors shadow-md">確定</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const SocialScheduler = () => {
+            const [activeTab, setActiveTab] = useState('schedule');
+            const [user, setUser] = useState(null);
+            const [isCloudReady, setIsCloudReady] = useState(false);
+
+            // --- State ---
+            const [posts, setPosts] = useState([]);
+            const [standards, setStandards] = useState({
+                'Facebook': { type: 'tiered', high: { reach: 2000, rate: 5.0 }, std: { reach: 1500, rate: 3.0 }, low: { reach: 1000, rate: 1.5 } },
+                'Instagram': { type: 'simple', reach: 900, engagement: 30, rate: 3.5 },
+                'Threads': { type: 'reference', reach: 84000, engagement: 1585, rate: 0, note: "標竿: 09/17更新(瀏覽8.4萬), 10/07孕婦節(互動1585)" },
+                'YouTube': { type: 'simple', reach: 500, engagement: 0, rate: 2.0 },
+                'LINE@': { type: 'simple', reach: 0, engagement: 0, rate: 0 } 
+            });
+
+            // --- Firebase Sync ---
+            useEffect(() => {
+                if (window.isCloudEnabled && window.auth) {
+                    const unsub = window.onAuthStateChanged(window.auth, (u) => {
+                        if (u) {
+                            setUser(u);
+                            setIsCloudReady(true);
+                        }
+                    });
+                    return () => unsub();
+                }
+            }, []);
+
+            // Sync Posts
+            useEffect(() => {
+                if (!isCloudReady || !user) return;
+                try {
+                    const q = window.query(window.collection(window.db, 'artifacts', window.appId, 'public', 'data', 'posts'));
+                    const unsub = window.onSnapshot(q, (snapshot) => {
+                        const remotePosts = snapshot.docs.map(doc => doc.data());
+                        setPosts(remotePosts);
+                    }, (error) => {
+                        console.error("Firestore Read Error:", error);
+                    });
+                    return () => unsub();
+                } catch (e) {
+                    console.error("Setup Snapshot Error:", e);
+                }
+            }, [isCloudReady, user]);
+
+            // Sync Standards
+            useEffect(() => {
+                if (!isCloudReady || !user) return;
+                try {
+                    const docRef = window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'config', 'standards');
+                    const unsub = window.onSnapshot(docRef, (docSnap) => {
+                        if (docSnap.exists()) {
+                            setStandards(docSnap.data());
+                        } else {
+                            // Init standards if not exists
+                            window.setDoc(docRef, standards);
+                        }
+                    }, (error) => {
+                        console.error("Firestore Config Error:", error);
+                    });
+                    return () => unsub();
+                } catch (e) {
+                     console.error("Setup Config Snapshot Error:", e);
+                }
+            }, [isCloudReady, user]);
+
+            // Helper: Safe Number
+            const safeNum = (val) => { const n = Number(val); return isNaN(n) ? 0 : n; };
+            const isMetricsDisabled = (p, f) => p === 'LINE@' || f === '限動' || f === '留言處';
+            const calculateDueDates = (dateString) => {
+                if (!dateString) return { date7d: '', date1m: '' };
+                const date = new Date(dateString);
+                if (isNaN(date.getTime())) return { date7d: '', date1m: '' };
+                const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r.toISOString().slice(0, 10); };
+                const addMonths = (d, n) => { const r = new Date(d); r.setMonth(r.getMonth() + n); return r.toISOString().slice(0, 10); };
+                return { date7d: addDays(date, 7), date1m: addMonths(date, 1) };
+            };
+            const getLocalToday = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+            const getDueStatus = (post, period) => {
+                if (post.status !== 'published' || isMetricsDisabled(post.platform, post.postFormat)) return null;
+                const { date7d, date1m } = calculateDueDates(post.date);
+                const today = getLocalToday();
+                const metrics = period === '7d' ? post.metrics7d : post.metrics1m;
+                const targetDate = period === '7d' ? date7d : date1m;
+                if (today >= targetDate && (!metrics || metrics.reach === 0)) return { isDue: true, date: targetDate };
+                return { isDue: false, date: targetDate };
+            };
+
+            const [filterType, setFilterType] = useState('month');
+            const [selectedMonth, setSelectedMonth] = useState(new Date().toISOString().slice(0, 7));
+            const [customRange, setCustomRange] = useState({ start: getLocalToday(), end: getLocalToday() });
+            const [filterPlatform, setFilterPlatform] = useState('All');
+            const [filterPostType, setFilterPostType] = useState('All');
+            const [filterPurpose, setFilterPurpose] = useState('All');
+            const [filterFormat, setFilterFormat] = useState('All');
+            const [filterKPI, setFilterKPI] = useState('All'); 
+            const [analyticsPeriod, setAnalyticsPeriod] = useState('7d'); 
+            const [filterPurposeCategory, setFilterPurposeCategory] = useState('All');
+            const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
+            const [showStandardsConfig, setShowStandardsConfig] = useState(false);
+            const [modalConfig, setModalConfig] = useState({ isOpen: false, type: '', data: null });
+            const [selectedPlatforms, setSelectedPlatforms] = useState(['Facebook']);
+            const [isEditing, setIsEditing] = useState(null);
+            const [formData, setFormData] = useState({
+                date: getLocalToday(), platform: 'Facebook', topic: '', postType: '喜餅', postSubType: '',
+                postPurpose: '互動', postFormat: '單圖', projectOwner: '夢涵', postOwner: '一千', designer: '千惟', status: 'draft',
+                metrics7d: { reach: 0, likes: 0, comments: 0, shares: 0 }, metrics1m: { reach: 0, likes: 0, comments: 0, shares: 0 }
+            });
+
+            // Options
+            const platforms = ['Facebook', 'Instagram', 'LINE@', 'YouTube', 'Threads'];
+            const mainPostTypes = ['喜餅', '彌月', '伴手禮', '社群互動', '圓夢計畫', '公告'];
+            const souvenirSubTypes = ['端午節', '中秋', '聖誕', '新春', '蒙友週'];
+            const postPurposes = ['互動', '廣告', '門市廣告', '導購', '公告'];
+            const postFormats = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處'];
+            const projectOwners = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷'];
+            const postOwners = ['一千', '凱曜', '可榆'];
+            const designers = ['千惟', '靖嬙'];
+
+            const resetForm = () => {
+                setFormData({
+                    date: getLocalToday(), platform: 'Facebook', topic: '', postType: '喜餅', postSubType: '',
+                    postPurpose: '互動', postFormat: '單圖', projectOwner: '夢涵', postOwner: '一千', designer: '千惟', status: 'draft',
+                    metrics7d: { reach: 0, likes: 0, comments: 0, shares: 0 }, metrics1m: { reach: 0, likes: 0, comments: 0, shares: 0 }
+                });
+                setSelectedPlatforms(['Facebook']);
+                setIsEditing(null);
+            };
+
+            const handleSavePost = async (e) => {
+                e.preventDefault();
+                if (!window.isCloudEnabled) { alert("請在支援 Firebase 的環境下使用以儲存資料。"); return; }
+                
+                let template = { ...formData };
+                const shouldClear = isMetricsDisabled(template.platform, template.postFormat);
+                
+                const saveToCloud = async (data) => {
+                    const docId = String(data.id);
+                    await window.setDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'posts', docId), data);
+                };
+
+                if (isEditing) {
+                    if (shouldClear) { template.metrics7d = {reach:0,likes:0,comments:0,shares:0}; template.metrics1m = {reach:0,likes:0,comments:0,shares:0}; }
+                    template.platform = selectedPlatforms[0];
+                    await saveToCloud(template);
+                } else {
+                    for (const p of selectedPlatforms) {
+                        let newPost = { ...template, platform: p, id: Date.now() + Math.random() };
+                        if (isMetricsDisabled(p, template.postFormat)) {
+                            newPost.metrics7d = {reach:0,likes:0,comments:0,shares:0};
+                            newPost.metrics1m = {reach:0,likes:0,comments:0,shares:0};
+                        }
+                        await saveToCloud(newPost);
+                    }
+                    const m = template.date.slice(0, 7);
+                    if (m !== selectedMonth && filterType === 'month') setSelectedMonth(m);
+                }
+                resetForm();
+            };
+
+            const handleStandardChange = async (platform, path, value) => {
+                const newStandards = { ...standards };
+                const pData = { ...newStandards[platform] };
+                if (path.length === 1) pData[path[0]] = safeNum(value); 
+                else if (path.length === 2) pData[path[0]] = { ...pData[path[0]], [path[1]]: safeNum(value) };
+                newStandards[platform] = pData;
+                setStandards(newStandards); // Optimistic UI
+                if(window.isCloudEnabled) {
+                     await window.setDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'config', 'standards'), newStandards);
+                }
+            };
+
+            const triggerDeletePost = (id) => setModalConfig({ isOpen: true, type: 'delete_single', data: id, title: '確定要刪除嗎？🗑️', message: '刪除後資料將無法復原。' });
+            
+            const handleConfirmAction = async () => {
+                if (modalConfig.type === 'delete_single' && window.isCloudEnabled) {
+                    await window.deleteDoc(window.doc(window.db, 'artifacts', window.appId, 'public', 'data', 'posts', String(modalConfig.data)));
+                }
+                setModalConfig({ isOpen: false, type: '', data: null });
+            };
+
+            const handleEditClick = (post) => { setIsEditing(post.id); setFormData(post); setSelectedPlatforms([post.platform]); window.scrollTo({ top: 0, behavior: 'smooth' }); };
+            
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                if (name === 'postType' && value !== '伴手禮') setFormData(prev => ({ ...prev, [name]: value, postSubType: '' }));
+                else setFormData(prev => ({ ...prev, [name]: value }));
+            };
+            const togglePlatform = (p) => {
+                if (isEditing) { setSelectedPlatforms([p]); setFormData(prev => ({ ...prev, platform: p })); } 
+                else { setSelectedPlatforms(prev => prev.includes(p) ? (prev.length > 1 ? prev.filter(i => i !== p) : prev) : [...prev, p]); }
+            };
+            const handleMetricChange = (period, field, value) => setFormData(prev => ({ ...prev, [period]: { ...prev[period], [field]: value === '' ? '' : safeNum(value) } }));
+            
+            // Logic: Filter & Sort
+            const filteredPosts = useMemo(() => posts.filter(p => {
+                const dateMatch = filterType === 'month' ? p.date.startsWith(selectedMonth) : (p.date >= customRange.start && p.date <= customRange.end);
+                return dateMatch && (filterPlatform === 'All' || p.platform === filterPlatform);
+            }), [posts, filterType, selectedMonth, customRange, filterPlatform]);
+
+            function getPerformanceLabel(platform, metrics, format) {
+                if (isMetricsDisabled(platform, format)) return { label: '-', color: 'text-gray-400', pass: false };
+                if (!metrics || !metrics.reach) return { label: '-', color: 'text-gray-400', pass: false };
+                
+                const std = standards[platform];
+                const eng = safeNum(metrics.likes) + safeNum(metrics.comments) + safeNum(metrics.shares);
+                const rate = (eng / safeNum(metrics.reach)) * 100;
+                
+                if (platform === 'Facebook') {
+                    if (metrics.reach >= std.high.reach && rate >= std.high.rate) return { label: '高標', color: 'text-purple-600 bg-purple-50 border-purple-200' };
+                    if (metrics.reach >= std.std.reach && rate >= std.std.rate) return { label: '標準', color: 'text-green-600 bg-green-50 border-green-200' };
+                    if (metrics.reach >= std.low.reach && rate >= std.low.rate) return { label: '低標', color: 'text-orange-600 bg-orange-50 border-orange-200' };
+                    return { label: '未達標', color: 'text-red-600 bg-red-50 border-red-200' };
+                } else if (platform === 'Instagram') {
+                    if (metrics.reach >= std.reach && eng >= std.engagement && rate >= std.rate) return { label: '達標', color: 'text-green-600 bg-green-50 border-green-200' };
+                    return { label: '未達標', color: 'text-red-600 bg-red-50 border-red-200' };
+                } else if (platform === 'Threads') {
+                    if (metrics.reach >= std.reach) return { label: '超標竿', color: 'text-purple-600 bg-purple-50 border-purple-200' };
+                    return { label: '-', color: 'text-gray-400' };
+                } else if (platform === 'YouTube') {
+                    if (metrics.reach >= std.reach && rate >= std.rate) return { label: '達標', color: 'text-green-600 bg-green-50 border-green-200' };
+                    return { label: '未達標', color: 'text-red-600 bg-red-50 border-red-200' };
+                }
+                return { label: '-', color: 'text-gray-400' };
+            }
+
+            const listFilteredPosts = useMemo(() => filteredPosts.filter(p => {
+                const typeMatch = filterPostType === 'All' || p.postType === filterPostType;
+                const purposeMatch = filterPurpose === 'All' || p.postPurpose === filterPurpose;
+                const formatMatch = filterFormat === 'All' || p.postFormat === filterFormat;
+                let kpiMatch = true;
+                if (filterKPI !== 'All') {
+                    const perf = getPerformanceLabel(p.platform, p.metrics7d, p.postFormat);
+                    if (filterKPI === 'Good') kpiMatch = ['高標', '標準', '達標', '超標竿'].some(k => perf.label.includes(k));
+                    else if (filterKPI === 'Fair') kpiMatch = perf.label.includes('低標');
+                    else if (filterKPI === 'Poor') kpiMatch = perf.label.includes('未達標');
+                    else if (filterKPI === 'None') kpiMatch = perf.label === '-';
+                }
+                return typeMatch && purposeMatch && formatMatch && kpiMatch;
+            }), [filteredPosts, filterPostType, filterPurpose, filterFormat, filterKPI, standards]);
+
+            const sortedPosts = useMemo(() => {
+                let items = [...listFilteredPosts];
+                items.sort((a, b) => {
+                    let aVal, bVal;
+                    if (sortConfig.key === 'rate7d') {
+                        const gr = (p) => isMetricsDisabled(p.platform, p.postFormat) || !p.metrics7d?.reach ? 0 : ((p.metrics7d.likes + p.metrics7d.comments + p.metrics7d.shares) / p.metrics7d.reach);
+                        aVal = gr(a); bVal = gr(b);
+                    } else if (sortConfig.key === 'rate1m') {
+                        const gr = (p) => isMetricsDisabled(p.platform, p.postFormat) || !p.metrics1m?.reach ? 0 : ((p.metrics1m.likes + p.metrics1m.comments + p.metrics1m.shares) / p.metrics1m.reach);
+                        aVal = gr(a); bVal = gr(b);
+                    } else if (sortConfig.key.includes('metrics')) {
+                        const k = sortConfig.key; 
+                        aVal = a[k]?.reach || 0; bVal = b[k]?.reach || 0;
+                    } else {
+                        aVal = a[sortConfig.key]; bVal = b[sortConfig.key];
+                    }
+                    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                    return 0;
+                });
+                return items;
+            }, [listFilteredPosts, sortConfig]);
+
+            // Stats
+            const stats = useMemo(() => {
+                let target = filteredPosts.filter(p => p.status === 'published');
+                if (filterPurposeCategory !== 'All') {
+                    target = target.filter(p => {
+                         const isAd = ['廣告', '門市廣告'].includes(p.postPurpose);
+                         return filterPurposeCategory === 'Ad' ? isAd : !isAd;
+                    });
+                }
+                
+                const getM = (p) => analyticsPeriod === '7d' ? (p.metrics7d || {}) : (p.metrics1m || {});
+                const calcPosts = target.filter(p => !isMetricsDisabled(p.platform, p.postFormat));
+
+                const totalReach = calcPosts.filter(p => !['Threads', 'LINE@'].includes(p.platform)).reduce((s, p) => s + safeNum(getM(p).reach), 0);
+                const totalEng = calcPosts.filter(p => p.platform !== 'LINE@').reduce((s, p) => s + safeNum(getM(p).likes) + safeNum(getM(p).comments) + safeNum(getM(p).shares), 0);
+                
+                const pStats = {};
+                const tDist = {};
+                mainPostTypes.forEach(t => tDist[t] = 0);
+                
+                platforms.forEach(plat => {
+                     const pPosts = target.filter(p => p.platform === plat);
+                     const pCalc = pPosts.filter(p => !isMetricsDisabled(p.platform, p.postFormat));
+                     const r = pCalc.reduce((s, x) => s + safeNum(getM(x).reach), 0);
+                     const e = pCalc.reduce((s, x) => s + safeNum(getM(x).likes) + safeNum(getM(x).comments) + safeNum(getM(x).shares), 0);
+                     const rate = r > 0 ? (e/r)*100 : 0;
+                     pStats[plat] = { count: pPosts.length, reach: r, engagement: e, rate: rate.toFixed(2) };
+                });
+
+                target.forEach(p => { if (tDist[p.postType] !== undefined) tDist[p.postType]++; });
+                return { totalReach, totalEng, pStats, tDist, publishedCount: target.length };
+            }, [filteredPosts, analyticsPeriod, filterPurposeCategory]);
+
+            // Misc
+            const monthOptions = useMemo(() => {
+                const s = new Set(posts.map(p => p.date ? p.date.slice(0, 7) : ''));
+                if (s.size === 0) s.add(new Date().toISOString().slice(0, 7));
+                return Array.from(s).filter(Boolean).sort().reverse();
+            }, [posts]);
+
+            useEffect(() => { if (monthOptions.length > 0 && !monthOptions.includes(selectedMonth)) setSelectedMonth(monthOptions[0]); }, [monthOptions]);
+            const currentDueDates = useMemo(() => calculateDueDates(formData.date), [formData.date]);
+
+            // Export
+            const handleExport = () => {
+                const filename = `社群排程_${filterType==='month'?selectedMonth:'custom'}.csv`;
+                const headers = "ID,日期,平台,主題,類型,子類型,目的,形式,專案,貼文,美編,狀態,7天_觸及,7天_按讚,7天_留言,7天_分享,7天_互動率,KPI,月_觸及,月_按讚,月_留言,月_分享,月_互動率\n";
+                const content = "data:text/csv;charset=utf-8,\uFEFF" + headers + listFilteredPosts.map(e => {
+                     const m7=e.metrics7d||{}, m1=e.metrics1m||{};
+                     const e7=safeNum(m7.likes)+safeNum(m7.comments)+safeNum(m7.shares);
+                     const r7=isMetricsDisabled(e.platform,e.postFormat)||!m7.reach?'-':((e7/m7.reach)*100).toFixed(2)+'%';
+                     const e1=safeNum(m1.likes)+safeNum(m1.comments)+safeNum(m1.shares);
+                     const r1=isMetricsDisabled(e.platform,e.postFormat)||!m1.reach?'-':((e1/m1.reach)*100).toFixed(2)+'%';
+                     return `${e.id},${e.date},${e.platform},${e.topic},${e.postType},${e.postSubType},${e.postPurpose},${e.postFormat},${e.projectOwner},${e.postOwner},${e.designer},${e.status},`+
+                            `${safeNum(m7.reach)},${safeNum(m7.likes)},${safeNum(m7.comments)},${safeNum(m7.shares)},${r7},`+
+                            `${getPerformanceLabel(e.platform,m7,e.postFormat).label},`+
+                            `${safeNum(m1.reach)},${safeNum(m1.likes)},${safeNum(m1.comments)},${safeNum(m1.shares)},${r1}`;
+                }).join("\n");
+                const link = document.createElement("a"); link.href = encodeURI(content); link.download = filename; link.click();
+            };
+
+            const SortIcon = ({k}) => sortConfig.key !== k ? <span className="ml-1 text-gray-300 text-xs">⬆️</span> : (sortConfig.direction === 'asc' ? <span className="ml-1 text-pink-500 text-xs">⬆️</span> : <span className="ml-1 text-pink-500 text-xs">⬇️</span>);
+            const Th = ({label, k, align='left'}) => (
+                <th className="p-4 font-semibold text-sm cursor-pointer hover:bg-pink-50 text-gray-600" onClick={() => {
+                     const d = (sortConfig.key === k && sortConfig.direction === 'asc') ? 'desc' : 'asc';
+                     setSortConfig({ key: k, direction: d });
+                }}>
+                    <div className={`flex items-center ${align === 'right' ? 'justify-end' : ''}`}>{label} <SortIcon k={k}/></div>
+                </th>
+            );
+
+            if (!window.isCloudEnabled) return <div className="h-screen flex items-center justify-center bg-gray-50 flex-col"><h2 className="text-xl font-bold text-gray-700">⚠️ 未連接雲端資料庫</h2><p className="mt-2 text-gray-500">若您已下載此檔案，請確認程式碼中包含正確的 Firebase Config。</p><p className="text-sm text-gray-400 mt-1">在預覽環境中可直接使用。</p></div>;
+
+            return (
+                <div className="min-h-screen bg-gray-50 text-gray-800 font-sans pb-10">
+                    <ConfirmModal isOpen={modalConfig.isOpen} title={modalConfig.title} message={modalConfig.message} onConfirm={handleConfirmAction} onCancel={() => setModalConfig({isOpen:false})} />
+                    
+                    {/* Header */}
+                    <header className="bg-white shadow-sm sticky top-0 z-10 border-b border-pink-100">
+                        <div className="max-w-7xl mx-auto px-4 py-4 flex flex-col md:flex-row justify-between items-center space-y-4 md:space-y-0">
+                            <div className="flex items-center space-x-2"><div className="bg-gradient-to-tr from-pink-400 to-purple-400 text-white p-2 rounded-xl text-2xl shadow-md">☁️</div><h1 className="text-xl font-bold text-gray-700 tracking-wide">社群排程管家 (雲端版)</h1></div>
+                            <div className="flex flex-col md:flex-row items-center gap-3">
+                                <div className="flex items-center gap-2">
+                                    <select value={filterPlatform} onChange={e=>setFilterPlatform(e.target.value)} className="bg-white border border-pink-200 text-gray-600 py-2 pl-3 pr-8 rounded-xl text-sm outline-none"><option value="All">🌈 全部平台</option>{platforms.map(p=><option key={p} value={p}>{ICONS.platforms[p]} {p}</option>)}</select>
+                                    <div className="flex bg-white border border-pink-200 p-1 rounded-xl">
+                                        <button onClick={()=>setFilterType('month')} className={`px-3 py-1 text-sm rounded-lg ${filterType==='month'?'bg-pink-100 text-pink-600 font-bold':'text-gray-400'}`}>月</button>
+                                        <button onClick={()=>setFilterType('custom')} className={`px-3 py-1 text-sm rounded-lg ${filterType==='custom'?'bg-pink-100 text-pink-600 font-bold':'text-gray-400'}`}>日</button>
+                                    </div>
+                                    {filterType==='month' ? 
+                                        <select value={selectedMonth} onChange={e=>setSelectedMonth(e.target.value)} className="bg-white border border-pink-200 text-gray-600 py-2 pl-4 pr-10 rounded-xl text-sm outline-none">{monthOptions.map(m=><option key={m} value={m}>{m}</option>)}</select> : 
+                                        <div className="flex items-center gap-1"><input type="date" value={customRange.start} onChange={e=>setCustomRange(p=>({...p,start:e.target.value}))} className="border border-pink-200 rounded-xl p-2 text-sm text-gray-600"/><span className="text-gray-300">-</span><input type="date" value={customRange.end} onChange={e=>setCustomRange(p=>({...p,end:e.target.value}))} className="border border-pink-200 rounded-xl p-2 text-sm text-gray-600"/></div>
+                                    }
+                                </div>
+                                <div className="flex gap-2">
+                                    <button onClick={()=>setActiveTab('schedule')} className={`px-4 py-2 rounded-xl flex items-center gap-1 transition-all ${activeTab==='schedule'?'bg-white text-pink-500 font-bold border-2 border-pink-200':'text-gray-500'}`}><span>🗓️</span> 排程</button>
+                                    <button onClick={()=>setActiveTab('analytics')} className={`px-4 py-2 rounded-xl flex items-center gap-1 transition-all ${activeTab==='analytics'?'bg-white text-purple-500 font-bold border-2 border-purple-200':'text-gray-500'}`}><span>📊</span> 分析</button>
+                                </div>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto px-4 py-8">
+                        {activeTab === 'schedule' && (
+                            <div className="space-y-6">
+                                {/* Form */}
+                                <div className="bg-white rounded-3xl shadow-sm border border-pink-100 p-6 animate-fade-in-down">
+                                    <div className="flex justify-between items-center mb-6">
+                                        <h2 className="text-lg font-bold flex items-center text-gray-700"><span className="mr-2 text-2xl bg-yellow-100 p-1.5 rounded-lg">{isEditing?'✏️':'✨'}</span> {isEditing?'編輯貼文':'新增排程'}</h2>
+                                        {isEditing && <button onClick={resetForm} className="text-sm text-gray-400 hover:text-pink-500 underline decoration-dashed">取消編輯</button>}
+                                    </div>
+                                    <form onSubmit={handleSavePost} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+                                        <div className="space-y-1"><label className="text-xs font-bold text-gray-400 ml-1">日期</label><input type="date" name="date" required value={formData.date} onChange={handleInputChange} className="w-full p-2.5 border border-gray-200 rounded-xl outline-none focus:border-pink-300 transition-all bg-gray-50"/></div>
+                                        <div className="space-y-1 md:col-span-2 lg:col-span-1"><label className="text-xs font-bold text-gray-400 ml-1">平台 {isEditing?'(單選)':'(可複選)'}</label><div className="flex flex-wrap gap-2 mt-1">{platforms.map(p=><button key={p} type="button" onClick={()=>togglePlatform(p)} className={`px-3 py-1.5 rounded-lg text-sm border transition-all flex items-center ${selectedPlatforms.includes(p)?'bg-pink-100 border-pink-300 text-pink-600 font-bold shadow-sm':'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}><span className="mr-1">{ICONS.platforms[p]}</span>{p}</button>)}</div></div>
+                                        <div className="space-y-1 md:col-span-2"><label className="text-xs font-bold text-gray-400 ml-1">主題</label><input type="text" name="topic" required placeholder="例如：母親節促銷 🎉" value={formData.topic} onChange={handleInputChange} className="w-full p-2.5 border border-gray-200 rounded-xl outline-none focus:border-pink-300 transition-all bg-gray-50"/></div>
+                                        <div className="space-y-1"><label className="text-xs font-bold text-gray-400 ml-1">類型</label><select name="postType" value={formData.postType} onChange={handleInputChange} className="w-full p-2.5 border border-gray-200 rounded-xl outline-none bg-white">{mainPostTypes.map(o=><option key={o} value={o}>{o}</option>)}</select></div>
+                                        <div className="space-y-1"><label className="text-xs font-bold text-gray-400 ml-1">節慶/子類型</label><select name="postSubType" value={formData.postSubType} onChange={handleInputChange} disabled={formData.postType!=='伴手禮'} className={`w-full p-2.5 border rounded-xl outline-none ${formData.postType!=='伴手禮'?'bg-gray-50 text-gray-300':'bg-yellow-50 text-gray-700'}`}><option value="">-- 無 --</option>{souvenirSubTypes.map(o=><option key={o} value={o}>{o}</option>)}</select></div>
+                                        <div className="space-y-1"><label className="text-xs font-bold text-gray-400 ml-1">目的 / 形式</label><div className="flex gap-2"><select name="postPurpose" value={formData.postPurpose} onChange={handleInputChange} className="w-1/2 p-2.5 border border-gray-200 rounded-xl outline-none bg-white">{postPurposes.map(o=><option key={o} value={o}>{o}</option>)}</select><select name="postFormat" value={formData.postFormat} onChange={handleInputChange} className="w-1/2 p-2.5 border border-gray-200 rounded-xl outline-none bg-white">{postFormats.map(o=><option key={o} value={o}>{o}</option>)}</select></div></div>
+                                        <div className="space-y-1"><label className="text-xs font-bold text-gray-400 ml-1">負責人員 (P/E/D)</label><div className="flex gap-1"><select name="projectOwner" value={formData.projectOwner} onChange={handleInputChange} className="w-1/3 p-2.5 border border-gray-200 rounded-xl text-xs bg-white">{projectOwners.map(o=><option key={o} value={o}>{o}</option>)}</select><select name="postOwner" value={formData.postOwner} onChange={handleInputChange} className="w-1/3 p-2.5 border border-gray-200 rounded-xl text-xs bg-white">{postOwners.map(o=><option key={o} value={o}>{o}</option>)}</select><select name="designer" value={formData.designer} onChange={handleInputChange} className="w-1/3 p-2.5 border border-gray-200 rounded-xl text-xs bg-white">{designers.map(o=><option key={o} value={o}>{o}</option>)}</select></div></div>
+                                        <div className="space-y-1"><label className="text-xs font-bold text-gray-400 ml-1">狀態</label><select name="status" value={formData.status} onChange={handleInputChange} className="w-full p-2.5 border border-gray-200 rounded-xl focus:ring-2 focus:ring-pink-100 outline-none bg-white"><option value="draft">🌱 草稿</option><option value="planned">⏰ 已排程</option><option value="published">🚀 已發布</option></select></div>
+                                        
+                                        {/* Metrics */}
+                                        <div className={`col-span-1 md:col-span-2 lg:col-span-4 grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-gray-100 pt-6 mt-2 transition-opacity ${formData.status!=='published'?'opacity-40 grayscale':'opacity-100'}`}>
+                                            {[
+                                                { id: 'metrics7d', title: '🔥 發文 7 天成效', date: currentDueDates.date7d },
+                                                { id: 'metrics1m', title: '🌳 發文一個月成效', date: currentDueDates.date1m }
+                                            ].map((m, idx) => (
+                                                <div key={idx} className={`p-5 rounded-2xl border relative ${isMetricsDisabled(formData.platform, formData.postFormat)?'bg-gray-100 border-gray-200':'bg-white border-blue-100'}`}>
+                                                    {isMetricsDisabled(formData.platform, formData.postFormat) && <div className="absolute inset-0 flex items-center justify-center bg-gray-100/70 z-10 rounded-2xl"><span className="bg-white text-gray-400 px-3 py-1 rounded-full text-xs font-bold border">不需填寫</span></div>}
+                                                    <div className="flex justify-between mb-3"><h4 className="text-sm font-bold text-blue-600">{m.title}</h4>{formData.date && <span className="text-xs text-gray-400 bg-gray-50 px-2 py-0.5 rounded">預計: {m.date.slice(5).replace('-','/')}</span>}</div>
+                                                    <div className="grid grid-cols-3 gap-3">
+                                                        {['reach','likes','comments'].map(k => (
+                                                            <div key={k} className="space-y-1"><label className="text-xs text-gray-400 font-bold ml-1 capitalize">{k==='reach'?'觸及':k==='likes'?'按讚':'留言+分享'}</label>
+                                                                {k !== 'comments' ? 
+                                                                    <input type="number" disabled={isMetricsDisabled(formData.platform, formData.postFormat)} value={formData[m.id][k]} onChange={e => handleMetricChange(m.id, k, e.target.value)} className="w-full p-2 border border-gray-200 rounded-lg text-right outline-none focus:border-blue-300" /> :
+                                                                    <div className="flex gap-1"><input type="number" value={formData[m.id].comments} onChange={e=>handleMetricChange(m.id,'comments',e.target.value)} className="w-1/2 p-2 border border-gray-200 rounded-lg text-center outline-none focus:border-blue-300"/><input type="number" value={formData[m.id].shares} onChange={e=>handleMetricChange(m.id,'shares',e.target.value)} className="w-1/2 p-2 border border-gray-200 rounded-lg text-center outline-none focus:border-blue-300"/></div>
+                                                                }
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="md:col-span-2 lg:col-span-4 flex justify-end"><button className="bg-gradient-to-r from-blue-500 to-indigo-600 text-white px-8 py-2.5 rounded-xl font-bold hover:shadow-lg transition-all transform hover:-translate-y-0.5">💾 {isEditing?'更新':'加入'}排程</button></div>
+                                    </form>
+                                </div>
+
+                                {/* List */}
+                                <div className="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden">
+                                    <div className="p-5 border-b border-gray-100 flex justify-between items-center gap-4">
+                                        <div className="flex items-center gap-2"><h3 className="font-bold text-gray-700">排程列表 ({listFilteredPosts.length})</h3>
+                                            <div className="flex gap-2">
+                                                {[[filterPostType, setFilterPostType, mainPostTypes, '類型'], [filterPurpose, setFilterPurpose, postPurposes, '目的'], [filterFormat, setFilterFormat, postFormats, '形式']].map(([val, setFn, opts, label]) => (
+                                                    <select key={label} value={val} onChange={e=>setFn(e.target.value)} className="text-xs bg-white text-gray-500 px-2 py-1.5 rounded-lg border border-gray-200 outline-none"><option value="All">{label}: 全部</option>{opts.map(o=><option key={o} value={o}>{o}</option>)}</select>
+                                                ))}
+                                                <select value={filterKPI} onChange={e=>setFilterKPI(e.target.value)} className="text-xs bg-white text-gray-500 px-2 py-1.5 rounded-lg border border-gray-200 outline-none"><option value="All">KPI: 全部</option><option value="Good">🟢 達標</option><option value="Fair">🟠 低標</option><option value="Poor">🔴 未達標</option></select>
+                                            </div>
+                                        </div>
+                                        <button onClick={handleExport} className="text-xs text-blue-600 font-bold bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100">📥 匯出 CSV</button>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full text-left whitespace-nowrap">
+                                            <thead><tr className="bg-gray-50 text-gray-500 text-sm border-b"><Th label="日期/平台" k="date"/><Th label="主題/類型" k="topic"/><th className="p-4 text-xs font-medium text-gray-500">負責人員</th><Th label="狀態" k="status"/><Th label="KPI" k="metrics7d"/><Th label="7天數據" k="metrics7d" align="right"/><Th label="7天率" k="rate7d" align="right"/><Th label="月數據" k="metrics1m" align="right"/><Th label="月率" k="rate1m" align="right"/><th className="p-4 text-center">操作</th></tr></thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {sortedPosts.map(p => {
+                                                    const m7=p.metrics7d||{}, m1=p.metrics1m||{};
+                                                    const e7=(m7.likes||0)+(m7.comments||0)+(m7.shares||0), e1=(m1.likes||0)+(m1.comments||0)+(m1.shares||0);
+                                                    const noCalc = isMetricsDisabled(p.platform, p.postFormat);
+                                                    const r7 = (noCalc || !m7.reach) ? '-' : ((e7/m7.reach)*100).toFixed(2)+'%';
+                                                    const r1 = (noCalc || !m1.reach) ? '-' : ((e1/m1.reach)*100).toFixed(2)+'%';
+                                                    const due7 = getDueStatus(p,'7d'), due1 = getDueStatus(p,'1m');
+                                                    const isT = getLocalToday() === p.date;
+                                                    
+                                                    return (
+                                                        <tr key={p.id} className={`hover:bg-pink-50 transition-colors ${isT?'bg-yellow-50 border-l-4 border-l-yellow-400':''}`}>
+                                                            <td className="p-4 text-sm"><div className={`font-mono font-bold mb-1 ${isT?'text-yellow-700':'text-gray-500'}`}>{p.date} {isT&&'✨'}</div><span className="px-2 py-0.5 rounded text-xs border bg-white text-gray-600">{ICONS.platforms[p.platform]} {p.platform}</span></td>
+                                                            <td className="p-4 text-sm"><div className="font-bold text-gray-800 mb-1">{p.topic}</div><div className="flex gap-1 text-[10px] text-gray-400"><span className="bg-gray-100 px-1 rounded">{p.postType}</span><span className="bg-blue-50 text-blue-600 px-1 rounded">{p.postPurpose}</span><span className="bg-purple-50 text-purple-600 px-1 rounded">{p.postFormat}</span></div></td>
+                                                            <td className="p-4 text-xs text-gray-500 space-y-0.5"><div>專:{p.projectOwner}</div><div>貼:{p.postOwner}</div><div>美:{p.designer}</div></td>
+                                                            <td className="p-4"><span className={`px-2 py-1 rounded text-xs font-bold border ${p.status==='published'?'bg-green-100 text-green-700 border-green-200':p.status==='planned'?'bg-blue-100 text-blue-700 border-blue-200':'bg-gray-100 text-gray-500'}`}>{ICONS.status[p.status]} {p.status==='published'?'已發布':p.status==='planned'?'已排程':'草稿'}</span></td>
+                                                            <td className="p-4 text-sm">{p.status==='published' ? <span className={`text-xs px-2 py-1 rounded border font-medium ${getPerformanceLabel(p.platform, m7, p.postFormat).color}`}>{getPerformanceLabel(p.platform, m7, p.postFormat).label}</span> : <span className="text-gray-300">...</span>}</td>
+                                                            <td className="p-4 text-sm text-right">{p.status==='published' ? (noCalc ? '-' : (due7?.isDue ? <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded border border-red-200 text-xs animate-pulse-slow">🔔 {due7.date.slice(5)}應填</span> : <div className="text-xs text-gray-600"><div>{(m7.reach||0).toLocaleString()}</div><div className="text-blue-500 font-bold">{e7.toLocaleString()}</div></div>)) : '-'}</td>
+                                                            <td className="p-4 text-sm text-right text-blue-600 font-bold">{p.status==='published' ? r7 : '-'}</td>
+                                                            <td className="p-4 text-sm text-right">{p.status==='published' ? (noCalc ? '-' : (due1?.isDue ? <span className="text-red-500 font-bold bg-red-50 px-2 py-1 rounded border border-red-200 text-xs animate-pulse-slow">🔔 {due1.date.slice(5)}應填</span> : <div className="text-xs text-gray-600"><div>{(m1.reach||0).toLocaleString()}</div><div className="text-purple-500 font-bold">{e1.toLocaleString()}</div></div>)) : '-'}</td>
+                                                            <td className="p-4 text-sm text-right text-purple-600 font-bold">{p.status==='published' ? r1 : '-'}</td>
+                                                            <td className="p-4 text-center"><div className="flex justify-center gap-2"><button onClick={()=>handleEditClick(p)} className="text-gray-400 hover:text-blue-500">✏️</button><button onClick={()=>triggerDeletePost(p.id)} className="text-gray-400 hover:text-red-500">🗑️</button></div></td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'analytics' && (
+                            <div className="space-y-6">
+                                <div className="flex flex-col md:flex-row justify-between items-center bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
+                                    <div className="flex gap-4 text-sm font-bold text-gray-700">
+                                        <span className="flex items-center text-blue-600"><span className="mr-2 text-xl">📅</span> {filterType==='month'?selectedMonth:`${customRange.start}~${customRange.end}`}</span>
+                                        <span className="flex items-center text-indigo-600"><span className="mr-2 text-xl">🔎</span> {filterPlatform==='All'?'全平台':filterPlatform}</span>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <div className="flex bg-gray-100 p-1 rounded-lg">
+                                            <button onClick={()=>setFilterPurposeCategory('All')} className={`px-3 py-1 text-xs rounded ${filterPurposeCategory==='All'?'bg-white shadow text-gray-800':'text-gray-500'}`}>全部</button>
+                                            <button onClick={()=>setFilterPurposeCategory('Ad')} className={`px-3 py-1 text-xs rounded ${filterPurposeCategory==='Ad'?'bg-white shadow text-yellow-600':'text-gray-500'}`}>💰 廣告</button>
+                                            <button onClick={()=>setFilterPurposeCategory('NonAd')} className={`px-3 py-1 text-xs rounded ${filterPurposeCategory==='NonAd'?'bg-white shadow text-green-600':'text-gray-500'}`}>💬 非廣告</button>
+                                        </div>
+                                        <div className="flex bg-gray-100 p-1 rounded-lg">
+                                            <button onClick={()=>setAnalyticsPeriod('7d')} className={`px-3 py-1 text-xs rounded ${analyticsPeriod==='7d'?'bg-white shadow text-blue-600':'text-gray-500'}`}>🔥 7天</button>
+                                            <button onClick={()=>setAnalyticsPeriod('1m')} className={`px-3 py-1 text-xs rounded ${analyticsPeriod==='1m'?'bg-white shadow text-purple-600':'text-gray-500'}`}>🌳 1月</button>
+                                        </div>
+                                        <button onClick={()=>setShowStandardsConfig(!showStandardsConfig)} className="px-3 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-600">🎯 設定</button>
+                                    </div>
+                                </div>
+
+                                {showStandardsConfig && <div className="bg-white p-6 rounded-3xl border border-pink-100 shadow-lg animate-fade-in-down mb-6"><h4 className="font-bold text-gray-700 mb-4">🎯 KPI 設定</h4><div className="grid grid-cols-1 md:grid-cols-2 gap-6"><div className="bg-blue-50 p-4 rounded-xl text-sm"><div className="font-bold text-blue-700 mb-2">FB (三級制)</div>{['high','std','low'].map(l=><div key={l} className="flex justify-between mb-1"><span>{l}</span><input type="number" value={standards.Facebook[l].reach} onChange={e=>handleStandardChange('Facebook',[l,'reach'],e.target.value)} className="w-16 text-right rounded"/></div>)}</div></div></div>}
+
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                    <div className="bg-white p-6 rounded-3xl border border-blue-50 shadow-sm flex justify-between"><div><p className="text-sm text-gray-400 font-bold">已發布 ({filterPurposeCategory==='Ad'?'廣告':filterPurposeCategory==='NonAd'?'非廣告':'全'})</p><p className="text-4xl font-bold text-gray-700">{stats.publishedCount}</p></div><div className="text-3xl">📝</div></div>
+                                    <div className="bg-white p-6 rounded-3xl border border-green-50 shadow-sm flex justify-between"><div><p className="text-sm text-gray-400 font-bold">總觸及</p><p className="text-4xl font-bold text-gray-700">{stats.totalReach.toLocaleString()}</p></div><div className="text-3xl">👁️</div></div>
+                                    <div className="bg-white p-6 rounded-3xl border border-pink-50 shadow-sm flex justify-between"><div><p className="text-sm text-gray-400 font-bold">總互動</p><p className="text-4xl font-bold text-gray-700">{stats.totalEngagement.toLocaleString()}</p></div><div className="text-3xl">💖</div></div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                                    {platforms.filter(p=>p!=='LINE@').map(p=>{
+                                        if (filterPlatform!=='All' && filterPlatform!==p) return null;
+                                        const d = stats.platformStats[p];
+                                        return <div key={p} className="bg-white border rounded-3xl p-5 shadow-sm"><div className="flex justify-between mb-3"><h4 className="font-bold text-gray-700">{ICONS.platforms[p]} {p}</h4><span className="text-xs bg-gray-100 px-2 py-1 rounded">{d.count} 篇</span></div><div className="grid grid-cols-3 text-sm gap-2"><div className="text-center bg-gray-50 rounded p-2"><div className="text-gray-400 text-xs">觸及</div><div className="font-bold text-gray-700">{d.reach.toLocaleString()}</div></div><div className="text-center bg-gray-50 rounded p-2"><div className="text-gray-400 text-xs">互動</div><div className="font-bold text-pink-500">{d.engagement.toLocaleString()}</div></div><div className="text-center bg-gray-50 rounded p-2"><div className="text-gray-400 text-xs">率</div><div className="font-bold text-indigo-500">{p==='Threads'?'-':d.rate+'%'}</div></div></div></div>
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<SocialScheduler />);
+    </script>
+</body>
+</html>
