@@ -216,7 +216,31 @@ with tab1:
         f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), index=sub_index)
         
         c7, c8 = st.columns(2)
-        f_purpose = c7.selectbox("目的", POST_PURPOSES, index=POST_PURPOSES.index(post_data.get('postPurpose', '互動')) if post_data else 0)
+        
+        # --- 目的欄位 (修改重點：複選平台時個別設定) ---
+        platform_purposes = {} # 用來儲存各平台的目的
+        
+        with c7:
+            # 如果是「新增模式」且「選了超過1個平台」，顯示個別設定選單
+            if not is_edit and len(selected_platforms) > 1:
+                st.markdown("**🎯 各平台目的設定**")
+                for p in selected_platforms:
+                    # 為每個平台產生獨立的 selectbox
+                    platform_purposes[p] = st.selectbox(
+                        f"{ICONS.get(p, '')} {p}", 
+                        POST_PURPOSES, 
+                        key=f"purpose_for_{p}",
+                        index=POST_PURPOSES.index('互動')
+                    )
+            else:
+                # 單一平台或編輯模式，維持原本單一選單
+                default_index = POST_PURPOSES.index(post_data.get('postPurpose', '互動')) if post_data else 0
+                single_purpose = st.selectbox("目的", POST_PURPOSES, index=default_index)
+                
+                # 將單一選擇應用到所有選中的平台 (為了後續統一處理)
+                for p in selected_platforms:
+                    platform_purposes[p] = single_purpose
+
         f_format = c8.selectbox("形式", POST_FORMATS, index=POST_FORMATS.index(post_data.get('postFormat', '單圖')) if post_data else 0)
 
         c9, c10, c11 = st.columns(3)
@@ -268,34 +292,62 @@ with tab1:
             if not f_topic:
                 st.error("請填寫主題")
             else:
-                new_base = {
-                    'date': f_date.strftime("%Y-%m-%d"),
-                    'topic': f_topic,
-                    'postType': f_type,
-                    'postSubType': f_subtype if f_subtype != "-- 無 --" else "",
-                    'postPurpose': f_purpose,
-                    'postFormat': f_format,
-                    'projectOwner': f_po,
-                    'postOwner': f_owner,
-                    'designer': f_designer,
-                    'status': 'published',
-                    'metrics7d': metrics_input['metrics7d'],
-                    'metrics1m': metrics_input['metrics1m']
-                }
-
+                # 這裡不需要先定義 new_base，因為 postPurpose 會變動
+                
                 if is_edit:
-                    for i, p in enumerate(st.session_state.posts):
-                        if p['id'] == post_data['id']:
-                            st.session_state.posts[i] = {**p, **new_base, 'platform': selected_platforms[0]}
+                    # 編輯模式下，selected_platforms 只有一個，直接取值
+                    p = selected_platforms[0]
+                    final_purpose = platform_purposes[p]
+                    
+                    new_base = {
+                        'date': f_date.strftime("%Y-%m-%d"),
+                        'topic': f_topic,
+                        'postType': f_type,
+                        'postSubType': f_subtype if f_subtype != "-- 無 --" else "",
+                        'postPurpose': final_purpose, # 使用對應的目的
+                        'postFormat': f_format,
+                        'projectOwner': f_po,
+                        'postOwner': f_owner,
+                        'designer': f_designer,
+                        'status': 'published',
+                        'metrics7d': metrics_input['metrics7d'],
+                        'metrics1m': metrics_input['metrics1m']
+                    }
+                    
+                    for i, p_data in enumerate(st.session_state.posts):
+                        if p_data['id'] == post_data['id']:
+                            st.session_state.posts[i] = {**p_data, **new_base, 'platform': p}
                             break
                     st.session_state.editing_post = None
                     st.success("已更新！")
                 else:
+                    # 新增模式：迴圈處理每個平台
                     for p in selected_platforms:
-                        new_post = {**new_base, 'id': str(uuid.uuid4()), 'platform': p}
+                        # 取得該平台對應的目的
+                        final_purpose = platform_purposes[p]
+                        
+                        new_post = {
+                            'id': str(uuid.uuid4()),
+                            'date': f_date.strftime("%Y-%m-%d"),
+                            'platform': p,
+                            'topic': f_topic,
+                            'postType': f_type,
+                            'postSubType': f_subtype if f_subtype != "-- 無 --" else "",
+                            'postPurpose': final_purpose, # 寫入該平台的目的
+                            'postFormat': f_format,
+                            'projectOwner': f_po,
+                            'postOwner': f_owner,
+                            'designer': f_designer,
+                            'status': 'published',
+                            'metrics7d': metrics_input['metrics7d'],
+                            'metrics1m': metrics_input['metrics1m']
+                        }
+                        
+                        # 如果該平台不需要填寫成效，清空數據
                         if is_metrics_disabled(p, f_format):
                             new_post['metrics7d'] = {}
                             new_post['metrics1m'] = {}
+                            
                         st.session_state.posts.append(new_post)
                     st.success(f"已新增 {len(selected_platforms)} 則貼文！")
                 
@@ -347,8 +399,7 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        # 修改：columns 數量設定為 12 (0-11)
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -409,8 +460,7 @@ with tab1:
 
             # 使用標準 container
             with st.container():
-                # 欄位定義 (12欄)
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
@@ -452,7 +502,6 @@ with tab1:
                     d_c3.metric(f"30天-{r_label}", f"{r30:,}")
                     d_c4.metric("30天-互動", f"{e30:,}")
 
-            # 分隔線邏輯
             if is_today:
                 st.markdown("<hr style='margin: 0; border-top: 2px solid #fcd34d;'>", unsafe_allow_html=True)
             else:
