@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="2025社群排程與成效",
+    page_title="社群排程與成效管家",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -19,8 +19,9 @@ st.set_page_config(
 DATA_FILE = "social_posts.json"
 STANDARDS_FILE = "social_standards.json"
 
-# 選項定義
-PLATFORMS = ['Facebook', '社團','Instagram', 'LINE@', 'YouTube', 'Threads']
+# 選項定義 (修改：新增 '社團')
+PLATFORMS = ['Facebook', 'Instagram', 'LINE@', 'YouTube', 'Threads', '社團']
+
 MAIN_POST_TYPES = ['喜餅', '彌月', '伴手禮', '社群互動', '圓夢計畫', '公告']
 SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
@@ -28,15 +29,16 @@ POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文�
 
 # 專案負責人
 PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
-POST_OWNERS = ['一千', '楷曜', '可榆']
+POST_OWNERS = ['一千', '凱曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
 
 # 定義廣告類型的目的
 AD_PURPOSE_LIST = ['廣告', '門市廣告']
 
-# Icon Mapping
+# Icon Mapping (修改：新增 '社團' icon)
 ICONS = {
-    'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵','社團':👥,
+    'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵',
+    '社團': '👥',
     'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
 }
 
@@ -64,7 +66,8 @@ def load_standards():
         'Instagram': {'type': 'simple', 'reach': 900, 'engagement': 30, 'rate': 3.5},
         'Threads': {'type': 'reference', 'reach': 84000, 'engagement': 1585, 'rate': 0, 'note': "標竿: 09/17更新(瀏覽8.4萬), 10/07孕婦節(互動1585)"},
         'YouTube': {'type': 'simple', 'reach': 500, 'engagement': 0, 'rate': 2.0},
-        'LINE@': {'type': 'simple', 'reach': 0, 'engagement': 0, 'rate': 0}
+        'LINE@': {'type': 'simple', 'reach': 0, 'engagement': 0, 'rate': 0},
+        '社團': {'type': 'simple', 'reach': 500, 'engagement': 20, 'rate': 4.0} # 新增社團預設 KPI
     }
     if not os.path.exists(STANDARDS_FILE):
         return default_standards
@@ -106,6 +109,10 @@ def get_performance_label(platform, metrics, fmt, standards):
     rate = (engagement / reach) * 100
     std = standards.get(platform, {})
 
+    # 防止新平台未在標準設定檔中時報錯
+    if not std: 
+        return "-", "gray"
+
     if platform == 'Facebook':
         if reach >= std['high']['reach'] and rate >= std['high']['rate']: return "🏆 高標", "purple"
         if reach >= std['std']['reach'] and rate >= std['std']['rate']: return "✅ 標準", "green"
@@ -121,6 +128,10 @@ def get_performance_label(platform, metrics, fmt, standards):
     elif platform == 'Threads':
         if reach >= std['reach']: return "🔥 超標竿", "purple"
         return "-", "gray"
+    elif platform == '社團': # 社團邏輯 (與 IG/YT 類似，簡單達標制)
+        if reach >= std.get('reach', 0) and rate >= std.get('rate', 0):
+            return "✅ 達標", "green"
+        return "🔴 未達標", "red"
     
     return "-", "gray"
 
@@ -232,13 +243,12 @@ with st.sidebar:
         end_date = c2.date_input("結束", datetime.now())
 
 # --- 6. 主頁面 ---
-st.header("📅 2025社群排程與成效")
+st.header("📅 社群排程與成效管家")
 
 tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # --- 新增：自動滾動到頂部 (JavaScript 強制版) ---
     if st.session_state.scroll_to_top:
         components.html(
             """
@@ -465,7 +475,7 @@ with tab1:
 
         platform_colors = {
             'Facebook': '#3b82f6', 'Instagram': '#ec4899', 'LINE@': '#22c55e',
-            'YouTube': '#ef4444', 'Threads': '#1f2937'
+            'YouTube': '#ef4444', 'Threads': '#1f2937', '社團': '#d97706'
         }
 
         for week in cal:
@@ -490,8 +500,6 @@ with tab1:
                             
                             for p in day_posts:
                                 p_color = platform_colors.get(p['platform'], '#6b7280')
-                                
-                                # 修改：使用 st.markdown 顯示色塊標籤 (不可點擊)
                                 st.markdown(f"""
                                     <div style="
                                         background-color: {p_color};
@@ -662,6 +670,15 @@ with tab2:
             st.subheader("其他")
             std['YouTube']['reach'] = st.number_input("YT 觸及", value=std['YouTube']['reach'])
             std['Threads']['reach'] = st.number_input("Threads 瀏覽標竿", value=std['Threads']['reach'])
+            # 社團 KPI 設定介面
+            c_grp1, c_grp2 = st.columns(2)
+            c_grp1.markdown("**社團**")
+            std_grp_reach = c_grp1.number_input("社團觸及目標", value=std.get('社團', {}).get('reach', 500))
+            std_grp_rate = c_grp2.number_input("社團互動率目標(%)", value=std.get('社團', {}).get('rate', 4.0))
+            if '社團' not in std: std['社團'] = {}
+            std['社團']['reach'] = std_grp_reach
+            std['社團']['rate'] = std_grp_rate
+
         if st.button("儲存設定"):
             st.session_state.standards = std
             save_standards(std)
@@ -670,22 +687,22 @@ with tab2:
     st.markdown("### 📊 成效分析設定")
     ctrl1, ctrl2, ctrl3 = st.columns(3)
     period = ctrl1.selectbox("1. 分析基準 (時間)", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天成效" if x == "metrics7d" else "🌳 一個月成效")
-    ad_filter_val = ctrl2.selectbox("2. 內容類型", ["全部", "💰 廣告成效 (僅廣告/門市廣告)", "💬 非廣告成效 (排除廣告)"])
-    video_filter_val = ctrl3.selectbox("3. 形式過濾", ["全部", "🎬 短影音", "🖼️ 非短影音 (一般貼文)"])
+    ad_filter = ctrl2.selectbox("2. 內容類型", ["全部", "💰 廣告成效 (僅廣告/門市廣告)", "💬 非廣告成效 (排除廣告)"])
+    video_filter = ctrl3.selectbox("3. 形式過濾", ["全部", "🎬 短影音", "🖼️ 非短影音 (一般貼文)"])
 
     st.markdown("---")
 
     published_posts = [p for p in filtered_posts]
     target_posts = published_posts
     
-    if ad_filter_val == "💰 廣告成效 (僅廣告/門市廣告)":
+    if "廣告成效" in ad_filter:
         target_posts = [p for p in target_posts if p['postPurpose'] in AD_PURPOSE_LIST]
-    elif ad_filter_val == "💬 非廣告成效 (排除廣告)":
+    elif "非廣告成效" in ad_filter:
         target_posts = [p for p in target_posts if p['postPurpose'] not in AD_PURPOSE_LIST]
         
-    if video_filter_val == "🎬 短影音":
+    if "短影音" in video_filter:
         target_posts = [p for p in target_posts if p['postFormat'] == '短影音']
-    elif video_filter_val == "🖼️ 非短影音 (一般貼文)":
+    elif "非短影音" in video_filter:
         target_posts = [p for p in target_posts if p['postFormat'] != '短影音']
 
     def calc_stats_subset(posts_subset, p_period):
@@ -770,7 +787,9 @@ with tab2:
         pivot_df = pd.crosstab(df_dist['Platform'], df_dist['Type'], margins=True, margins_name="總計")
         
         existing_platforms = [p for p in PLATFORMS if p in pivot_df.index]
-        final_index = existing_platforms + ["總計"]
+        final_index = [p for p in existing_platforms] + ["總計"]
+        # 確保 index 存在才 reindex，避免錯誤
+        final_index = [x for x in final_index if x in pivot_df.index]
         pivot_df = pivot_df.reindex(final_index)
 
         if view_type == "📄 表格模式":
