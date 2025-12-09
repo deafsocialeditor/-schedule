@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效",
+    page_title="社群排程與成效管家",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -204,12 +204,6 @@ st.markdown("""
     .cal-day-header { text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 5px; }
     .cal-day-cell { min-height: 100px; padding: 5px; border-radius: 8px; font-size: 0.8em; }
     .cal-day-num { font-weight: bold; font-size: 1.1em; color: #374151; margin-bottom: 5px; }
-    .cal-post-item { padding: 3px 6px; margin-bottom: 4px; border-radius: 4px; font-size: 0.85em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; color: #fff; }
-    .cal-fb { background-color: #3b82f6; }
-    .cal-ig { background-color: #ec4899; }
-    .cal-line { background-color: #22c55e; }
-    .cal-yt { background-color: #ef4444; }
-    .cal-threads { background-color: #1f2937; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -242,26 +236,18 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # --- 新增：自動滾動到頂部 (JavaScript 強制版) ---
+    # --- 新增：自動滾動到頂部 (JavaScript) ---
     if st.session_state.scroll_to_top:
         components.html(
             """
             <script>
-                // 嘗試多種方式滾動到頂部，適應不同 Streamlit 版本與瀏覽器
-                try {
-                    window.parent.document.querySelector('section.main').scrollTo(0, 0);
-                } catch (e) {
-                    try {
-                        window.parent.scrollTo(0, 0);
-                    } catch (e2) {
-                        console.log("Scroll attempt failed");
-                    }
-                }
+                // 嘗試滾動父層視窗
+                window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
             </script>
             """,
             height=0
         )
-        st.session_state.scroll_to_top = False
+        st.session_state.scroll_to_top = False 
 
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
@@ -277,7 +263,7 @@ with tab1:
         if 'entry_purpose' not in st.session_state: st.session_state['entry_purpose'] = POST_PURPOSES[0]
         if 'entry_format' not in st.session_state: st.session_state['entry_format'] = ""
         if 'entry_po' not in st.session_state: st.session_state['entry_po'] = ""
-        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = "" 
+        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = ""
         if 'entry_designer' not in st.session_state: st.session_state['entry_designer'] = ""
         
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares',
@@ -428,6 +414,10 @@ with tab1:
                     del st.session_state[key]
                 st.rerun()
 
+    # --- 檢視模式切換 ---
+    view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed")
+    st.write("") 
+
     # --- 列表顯示邏輯 ---
     filtered_posts = st.session_state.posts
     
@@ -446,10 +436,6 @@ with tab1:
         filtered_posts = [p for p in filtered_posts if p['postPurpose'] == filter_purpose]
     if filter_format != "All":
         filtered_posts = [p for p in filtered_posts if p['postFormat'] == filter_format]
-
-    # --- 檢視模式切換 ---
-    view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed")
-    st.write("") 
 
     if view_mode == "🗓️ 日曆模式":
         if date_filter_type == "月":
@@ -492,10 +478,7 @@ with tab1:
                             day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
                             
                             for p in day_posts:
-                                p_color = platform_colors.get(p['platform'], '#6b7280')
                                 label = f"{ICONS.get(p['platform'],'')} {p['topic'][:6]}.."
-                                
-                                # 使用 Button 觸發編輯
                                 if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}"):
                                     edit_post_callback(p)
                                     st.rerun()
@@ -519,7 +502,8 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+            # 修改：columns 數量設定為 12 (包含刪除按鈕)
+            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
             
             for col, h in zip(col_list, headers):
@@ -576,7 +560,8 @@ with tab1:
                 })
 
                 with st.container():
-                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                    # 修改：columns 數量設定為 12
+                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     if is_today:
                         cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
@@ -605,6 +590,7 @@ with tab1:
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
+                    # 第 12 欄 (Index 11) - 刪除按鈕
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
@@ -668,7 +654,6 @@ with tab2:
     published_posts = [p for p in filtered_posts]
     target_posts = published_posts
     
-    # 修正邏輯錯誤：使用 == 進行精確比對
     if ad_filter_val == "💰 廣告成效 (僅廣告/門市廣告)":
         target_posts = [p for p in target_posts if p['postPurpose'] in AD_PURPOSE_LIST]
     elif ad_filter_val == "💬 非廣告成效 (排除廣告)":
