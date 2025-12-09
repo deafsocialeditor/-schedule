@@ -235,7 +235,6 @@ with tab1:
         if not hide_metrics:
             st.caption("數據填寫")
             
-            # Threads 改為 "瀏覽數"
             reach_label = "瀏覽數" if current_platform == 'Threads' else "觸及數"
             
             def get_m(key, period):
@@ -279,7 +278,7 @@ with tab1:
                     'projectOwner': f_po,
                     'postOwner': f_owner,
                     'designer': f_designer,
-                    'status': 'published', # 強制設定為已發布
+                    'status': 'published',
                     'metrics7d': metrics_input['metrics7d'],
                     'metrics1m': metrics_input['metrics1m']
                 }
@@ -348,8 +347,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        # Columns 數量為 12
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        # 修改：columns 數量設定為 12 (0-11)
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -382,7 +381,6 @@ with tab1:
                 is_due = False
                 
                 if not is_metrics_disabled(p['platform'], p['postFormat']):
-                    # 邏輯：今天日期 >= 應填日期 (亦即到了該填的那天或過了)，且數據為0
                     if today_date_obj >= due_date and reach == 0:
                         is_due = True
                 
@@ -411,9 +409,9 @@ with tab1:
 
             # 使用標準 container
             with st.container():
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                # 欄位定義 (12欄)
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                 
-                # 如果是今天，日期欄位加上黃底樣式
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
                 else:
@@ -454,7 +452,7 @@ with tab1:
                     d_c3.metric(f"30天-{r_label}", f"{r30:,}")
                     d_c4.metric("30天-互動", f"{e30:,}")
 
-            # 分隔線邏輯：今天用粗黃線，其他用一般灰線
+            # 分隔線邏輯
             if is_today:
                 st.markdown("<hr style='margin: 0; border-top: 2px solid #fcd34d;'>", unsafe_allow_html=True)
             else:
