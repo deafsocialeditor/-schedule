@@ -36,7 +36,7 @@ AD_PURPOSE_LIST = ['廣告', '門市廣告']
 
 # Icon Mapping
 ICONS = {
-    'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵',
+    'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵','社團':👥,
     'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
 }
 
