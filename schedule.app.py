@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效管家",
+    page_title="社群排程與成效",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -255,12 +255,9 @@ with tab1:
         if 'entry_type' not in st.session_state: st.session_state['entry_type'] = MAIN_POST_TYPES[0]
         if 'entry_subtype' not in st.session_state: st.session_state['entry_subtype'] = "-- 無 --"
         if 'entry_purpose' not in st.session_state: st.session_state['entry_purpose'] = POST_PURPOSES[0]
-        
-        # 修改：形式預設為空白
-        if 'entry_format' not in st.session_state: st.session_state['entry_format'] = ""
-        
+        if 'entry_format' not in st.session_state: st.session_state['entry_format'] = "" # 形式預設空白
         if 'entry_po' not in st.session_state: st.session_state['entry_po'] = ""
-        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = ""
+        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = "" # 負責人預設空白
         if 'entry_designer' not in st.session_state: st.session_state['entry_designer'] = ""
         
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares',
@@ -296,11 +293,12 @@ with tab1:
                 for p in selected_platforms:
                     platform_purposes[p] = single_purpose
 
-        # 修改：形式選項加入空白
+        # 形式選單加入空白選項
         f_format = c8.selectbox("形式", [""] + POST_FORMATS, key="entry_format")
 
         c9, c10, c11 = st.columns(3)
         f_po = c9.selectbox("專案負責人", [""] + PROJECT_OWNERS, key="entry_po")
+        # 負責人選單加入空白選項
         f_owner = c10.selectbox("貼文負責人", [""] + POST_OWNERS, key="entry_owner")
         f_designer = c11.selectbox("美編", [""] + DESIGNERS, key="entry_designer")
 
@@ -448,7 +446,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        # 修正：定義 12 個欄位的寬度 (最後一個是刪除按鈕)
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -505,7 +504,8 @@ with tab1:
             })
 
             with st.container():
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                # 修正：使用 12 個欄位
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
@@ -644,55 +644,4 @@ with tab2:
         if filter_platform != "All" and filter_platform != pf:
             continue
             
-        posts_pf = [p for p in target_posts if p['platform'] == pf]
-        if not posts_pf: continue
-        
-        c, r, e, rt = calc_stats_subset(posts_pf, period)
-        
-        rt_display = f"{rt:.2f}%"
-        if pf == 'Threads':
-            rt_display = "-"
-
-        platform_table_data.append({
-            "平台": f"{ICONS.get(pf, '')} {pf}",
-            "篇數": c,
-            "總觸及": int(r),
-            "總互動": int(e),
-            "互動率": rt_display
-        })
-    
-    if platform_table_data:
-        st.dataframe(
-            pd.DataFrame(platform_table_data),
-            column_config={
-                "總觸及": st.column_config.NumberColumn(format="%d"),
-                "總互動": st.column_config.NumberColumn(format="%d"),
-            },
-            use_container_width=True,
-            hide_index=True
-        )
-    else:
-        st.info("在此篩選條件下無資料。")
-
-    st.divider()
-
-    st.markdown("### 🍰 貼文類型分佈 (各平台)")
-
-    view_type = st.radio("顯示模式", ["📄 表格模式", "📊 圖表模式"], horizontal=True)
-
-    if target_posts:
-        data_for_dist = []
-        for p in target_posts:
-            data_for_dist.append({'Platform': p['platform'], 'Type': p['postType']})
-        
-        df_dist = pd.DataFrame(data_for_dist)
-        pivot_df = pd.crosstab(df_dist['Platform'], df_dist['Type'])
-        existing_platforms = [p for p in PLATFORMS if p in pivot_df.index]
-        pivot_df = pivot_df.reindex(existing_platforms)
-
-        if view_type == "📄 表格模式":
-            st.dataframe(pivot_df, use_container_width=True)
-        else:
-            st.bar_chart(pivot_df)
-    else:
-        st.caption("無符合條件的貼文數據")
+        posts_pf = [p for p in target_
