@@ -24,7 +24,7 @@ SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
 
-# 專案負責人 (含門市)
+# 專案負責人
 PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
 POST_OWNERS = ['一千', '凱曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
@@ -122,6 +122,44 @@ def get_performance_label(platform, metrics, fmt, standards):
     
     return "-", "gray"
 
+# --- Callback 函數 (修復錯誤的關鍵) ---
+def edit_post_callback(post):
+    """點擊編輯按鈕時觸發的 callback"""
+    st.session_state.editing_post = post
+    
+    # 預填表單欄位 (這裡更新 session_state 是安全的，因為 callback 在 rerun 前執行)
+    st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date() # 修正：轉為 date 物件
+    st.session_state['entry_platform_single'] = post['platform']
+    st.session_state['entry_topic'] = post['topic']
+    st.session_state['entry_type'] = post['postType']
+    
+    # 處理子類型
+    st.session_state['entry_subtype'] = post.get('postSubType', '') if post.get('postSubType', '') in (["-- 無 --"] + SOUVENIR_SUB_TYPES) else "-- 無 --"
+
+    st.session_state['entry_purpose'] = post['postPurpose']
+    st.session_state['entry_format'] = post['postFormat']
+    st.session_state['entry_po'] = post['projectOwner']
+    st.session_state['entry_owner'] = post['postOwner']
+    st.session_state['entry_designer'] = post['designer']
+    
+    # Metrics
+    m7 = post.get('metrics7d', {})
+    st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0))
+    st.session_state['entry_m7_likes'] = safe_num(m7.get('likes', 0))
+    st.session_state['entry_m7_comments'] = safe_num(m7.get('comments', 0))
+    st.session_state['entry_m7_shares'] = safe_num(m7.get('shares', 0))
+    
+    m1 = post.get('metrics1m', {})
+    st.session_state['entry_m1_reach'] = safe_num(m1.get('reach', 0))
+    st.session_state['entry_m1_likes'] = safe_num(m1.get('likes', 0))
+    st.session_state['entry_m1_comments'] = safe_num(m1.get('comments', 0))
+    st.session_state['entry_m1_shares'] = safe_num(m1.get('shares', 0))
+
+def delete_post_callback(post_id):
+    """點擊刪除按鈕時觸發"""
+    st.session_state.posts = [item for item in st.session_state.posts if item['id'] != post_id]
+    save_data(st.session_state.posts)
+
 # --- 3. 初始化 Session State ---
 if 'posts' not in st.session_state:
     st.session_state.posts = load_data()
@@ -191,38 +229,32 @@ with tab1:
         is_edit = st.session_state.editing_post is not None
         post_data = st.session_state.editing_post if is_edit else {}
         
-        # 表單佈局
         c1, c2, c3 = st.columns([1, 2, 1])
         
-        # 1. 日期
+        # 使用 session_state key 綁定
         f_date = c1.date_input("發布日期", value=datetime.now(), key="entry_date")
         
-        # 2. 平台 (編輯單選 / 新增複選)
         if is_edit:
             f_platform = c2.selectbox("平台 (編輯模式僅單選)", PLATFORMS, key="entry_platform_single")
             selected_platforms = [f_platform]
         else:
             selected_platforms = c2.multiselect("平台 (可複選)", PLATFORMS, default=['Facebook'], key="entry_platform_multi")
             
-        # 3. 主題
         f_topic = c3.text_input("主題", key="entry_topic")
 
         c4, c5, c6 = st.columns(3)
-        # 4. 類型
         f_type = c4.selectbox("貼文類型", MAIN_POST_TYPES, key="entry_type")
         
-        # 5. 子類型 (伴手禮用)
-        # 這裡需要特殊的 index 處理，因為它可能是 "無" 或 某個子類型
-        # 但因為我們用了 session_state 預填，這裡只要定義基本邏輯即可
-        f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), key="entry_subtype")
+        sub_index = 0
+        if is_edit and post_data.get('postSubType') in SOUVENIR_SUB_TYPES:
+            sub_index = SOUVENIR_SUB_TYPES.index(post_data['postSubType']) + 1
+            
+        f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), index=sub_index, key="entry_subtype")
         
         c7, c8 = st.columns(2)
-        
-        # 6. 目的 (複選平台時個別設定)
         platform_purposes = {} 
         
         with c7:
-            # 如果是新增模式且選了多個平台，顯示個別設定
             if not is_edit and len(selected_platforms) > 1:
                 st.markdown("**🎯 各平台目的設定**")
                 for p in selected_platforms:
@@ -233,15 +265,12 @@ with tab1:
                         index=POST_PURPOSES.index('互動')
                     )
             else:
-                # 單一選擇
                 single_purpose = st.selectbox("目的", POST_PURPOSES, key="entry_purpose")
                 for p in selected_platforms:
                     platform_purposes[p] = single_purpose
 
-        # 7. 形式
         f_format = c8.selectbox("形式", POST_FORMATS, key="entry_format")
 
-        # 8. 負責人
         c9, c10, c11 = st.columns(3)
         f_po = c9.selectbox("專案負責人", [""] + PROJECT_OWNERS, key="entry_po")
         f_owner = c10.selectbox("貼文負責人", POST_OWNERS, key="entry_owner")
@@ -249,8 +278,6 @@ with tab1:
 
         st.divider()
         
-        # 計算預計填寫日期 (僅顯示用)
-        # 注意：date_input 回傳的是 date 物件，需要轉算
         due_date_7d = f_date + timedelta(days=7)
         due_date_1m = f_date + timedelta(days=30)
         
@@ -264,7 +291,6 @@ with tab1:
             reach_label = "瀏覽數" if current_platform == 'Threads' else "觸及數"
             
             m_cols = st.columns(2)
-            
             with m_cols[0]:
                 st.markdown(f"##### 🔥 7天成效 <span style='font-size:0.7em; color:#ef4444; background:#fee2e2; padding:2px 6px; border-radius:4px;'>預計: {due_date_7d.strftime('%m/%d')}</span>", unsafe_allow_html=True)
                 metrics_input['metrics7d']['reach'] = st.number_input(f"7天-{reach_label}", step=1, key="entry_m7_reach")
@@ -344,8 +370,6 @@ with tab1:
                 
                 save_data(st.session_state.posts)
                 
-                # --- 清空欄位邏輯 ---
-                # 刪除所有以 'entry_' 或 'purpose_for_' 開頭的 session_state key
                 keys_to_clear = [key for key in st.session_state.keys() if key.startswith("entry_") or key.startswith("purpose_for_")]
                 for key in keys_to_clear:
                     del st.session_state[key]
@@ -355,7 +379,6 @@ with tab1:
         if st.session_state.editing_post:
             if st.button("取消編輯"):
                 st.session_state.editing_post = None
-                # 取消編輯時也清空，避免殘留
                 keys_to_clear = [key for key in st.session_state.keys() if key.startswith("entry_")]
                 for key in keys_to_clear:
                     del st.session_state[key]
@@ -401,8 +424,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        # Columns 數量 12
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]) # 修正這裡，多補一個 0.4 給第 12 欄
+        # 修改：columns 數量設定為 12 (0.8 + 0.7 + 1.8 + 0.7 + 0.6 + 0.6 + 0.6 + 0.6 + 0.6 + 0.4 + 0.4 + 0.4)
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -424,6 +447,7 @@ with tab1:
                 reach = safe_num(metrics.get('reach', 0))
                 
                 rate_str = "-"
+                # Threads 不計算互動率
                 if p['platform'] == 'Threads':
                     rate_str = "-"
                 elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
@@ -461,7 +485,7 @@ with tab1:
             })
 
             with st.container():
-                # Columns 數量 12
+                # 修正後的 12 欄
                 cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                 
                 if is_today:
@@ -488,50 +512,11 @@ with tab1:
                     
                 cols[9].write(f"{p['postOwner']}")
 
-                # 編輯按鈕 (Logic: 預填 session state)
-                if cols[10].button("✏️", key=f"edit_{p['id']}"):
-                    st.session_state.editing_post = p
-                    
-                    # 預填所有表單欄位到 session_state
-                    st.session_state['entry_date'] = datetime.strptime(p['date'], "%Y-%m-%d")
-                    st.session_state['entry_platform_single'] = p['platform']
-                    st.session_state['entry_topic'] = p['topic']
-                    st.session_state['entry_type'] = p['postType']
-                    
-                    # 處理子類型
-                    sub_idx = SOUVENIR_SUB_TYPES.index(p['postSubType']) + 1 if p['postSubType'] in SOUVENIR_SUB_TYPES else 0
-                    st.session_state['entry_subtype'] = ["-- 無 --"] + SOUVENIR_SUB_TYPES # Hack to ensure option exists if not None? No, simple logic:
-                    # Streamlit requires explicit index for selectbox if setting via state key? No, value match is enough if using key? 
-                    # Actually for selectbox with key, we usually rely on 'index' param or pre-set state value?
-                    # Streamlit is tricky here. The best way is to match the option list.
-                    # Let's simple set the value (which must correspond to an option)
-                    st.session_state['entry_subtype'] = p.get('postSubType', '') if p.get('postSubType', '') in (["-- 無 --"] + SOUVENIR_SUB_TYPES) else "-- 無 --"
-
-                    st.session_state['entry_purpose'] = p['postPurpose']
-                    st.session_state['entry_format'] = p['postFormat']
-                    st.session_state['entry_po'] = p['projectOwner']
-                    st.session_state['entry_owner'] = p['postOwner']
-                    st.session_state['entry_designer'] = p['designer']
-                    
-                    # Metrics
-                    m7 = p.get('metrics7d', {})
-                    st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0))
-                    st.session_state['entry_m7_likes'] = safe_num(m7.get('likes', 0))
-                    st.session_state['entry_m7_comments'] = safe_num(m7.get('comments', 0))
-                    st.session_state['entry_m7_shares'] = safe_num(m7.get('shares', 0))
-                    
-                    m1 = p.get('metrics1m', {})
-                    st.session_state['entry_m1_reach'] = safe_num(m1.get('reach', 0))
-                    st.session_state['entry_m1_likes'] = safe_num(m1.get('likes', 0))
-                    st.session_state['entry_m1_comments'] = safe_num(m1.get('comments', 0))
-                    st.session_state['entry_m1_shares'] = safe_num(m1.get('shares', 0))
-
-                    st.rerun()
-
-                if cols[11].button("🗑️", key=f"del_{p['id']}"):
-                    st.session_state.posts = [item for item in st.session_state.posts if item['id'] != p['id']]
-                    save_data(st.session_state.posts)
-                    st.rerun()
+                # 編輯按鈕 (Logic: 使用 callback)
+                cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,))
+                
+                # 刪除按鈕 (Logic: 使用 callback)
+                cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],))
 
                 with st.expander(f"📉 {p['topic']} - 詳細數據 (點擊展開)"):
                     r_label = "瀏覽" if p['platform'] == 'Threads' else "觸及"
