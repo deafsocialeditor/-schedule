@@ -24,7 +24,7 @@ SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
 
-# 修改：專案負責人新增「門市」
+# 專案負責人 (含門市)
 PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
 POST_OWNERS = ['一千', '凱曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
@@ -191,9 +191,6 @@ with tab1:
         is_edit = st.session_state.editing_post is not None
         post_data = st.session_state.editing_post if is_edit else {}
         
-        # 為了實現「儲存後清空」，我們為每個 widget 加上唯一的 key
-        # key 命名規則: entry_{欄位名}
-        
         c1, c2, c3 = st.columns([1, 2, 1])
         f_date = c1.date_input("發布日期", 
                                datetime.strptime(post_data.get('date', datetime.now().strftime("%Y-%m-%d")), "%Y-%m-%d") 
@@ -227,7 +224,7 @@ with tab1:
                     platform_purposes[p] = st.selectbox(
                         f"{ICONS.get(p, '')} {p}", 
                         POST_PURPOSES, 
-                        key=f"purpose_for_{p}", # 這些也是需要清空的 key
+                        key=f"purpose_for_{p}",
                         index=POST_PURPOSES.index('互動')
                     )
             else:
@@ -341,9 +338,7 @@ with tab1:
                 
                 save_data(st.session_state.posts)
                 
-                # --- 清空欄位邏輯 ---
-                # 刪除所有以 'entry_' 或 'purpose_for_' 開頭的 session_state key
-                # 這會強制 Streamlit 在 rerun 時使用 widget 的預設值（通常是空或第一項）重繪
+                # 清空欄位
                 keys_to_clear = [key for key in st.session_state.keys() if key.startswith("entry_") or key.startswith("purpose_for_")]
                 for key in keys_to_clear:
                     del st.session_state[key]
@@ -395,7 +390,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        # 修改：columns 數量設定為 12 (0.8 + 0.7 + 1.8 + 0.7 + 0.6 + 0.6 + 0.6 + 0.6 + 0.6 + 0.6 + 0.4 + 0.4)
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -417,6 +413,7 @@ with tab1:
                 reach = safe_num(metrics.get('reach', 0))
                 
                 rate_str = "-"
+                # Threads 不計算互動率
                 if p['platform'] == 'Threads':
                     rate_str = "-"
                 elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
@@ -453,8 +450,10 @@ with tab1:
                 '_raw': p 
             })
 
+            # 使用標準 container
             with st.container():
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                # 欄位定義 (12欄)
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
@@ -496,6 +495,7 @@ with tab1:
                     d_c3.metric(f"30天-{r_label}", f"{r30:,}")
                     d_c4.metric("30天-互動", f"{e30:,}")
 
+            # 分隔線邏輯
             if is_today:
                 st.markdown("<hr style='margin: 0; border-top: 2px solid #fcd34d;'>", unsafe_allow_html=True)
             else:
