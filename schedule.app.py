@@ -27,6 +27,9 @@ PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷']
 POST_OWNERS = ['一千', '凱曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
 
+# 定義廣告類型的目的
+AD_PURPOSE_LIST = ['廣告', '門市廣告']
+
 # Icon Mapping
 ICONS = {
     'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵',
@@ -144,11 +147,13 @@ with st.sidebar:
     st.title("🔎 篩選條件")
     
     filter_platform = st.selectbox("平台", ["All"] + PLATFORMS, index=0)
+    filter_post_type = st.selectbox("貼文類型", ["All"] + MAIN_POST_TYPES, index=0)
+    filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)")
     
+    st.divider()
     date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True)
     
     if date_filter_type == "月":
-        # 產生月份選單
         dates = [p['date'] for p in st.session_state.posts] if st.session_state.posts else [datetime.now().strftime("%Y-%m-%d")]
         months = sorted(list(set([d[:7] for d in dates])), reverse=True)
         if not months: months = [datetime.now().strftime("%Y-%m")]
@@ -165,10 +170,8 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # --- 新增/編輯區塊 ---
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         with st.form("post_form"):
-            # 如果是編輯模式，預填資料
             is_edit = st.session_state.editing_post is not None
             post_data = st.session_state.editing_post if is_edit else {}
             
@@ -188,7 +191,6 @@ with tab1:
             c4, c5, c6 = st.columns(3)
             f_type = c4.selectbox("貼文類型", MAIN_POST_TYPES, index=MAIN_POST_TYPES.index(post_data.get('postType', '喜餅')) if post_data else 0)
             
-            # 動態子類型
             sub_index = 0
             if is_edit and post_data.get('postSubType') in SOUVENIR_SUB_TYPES:
                 sub_index = SOUVENIR_SUB_TYPES.index(post_data['postSubType']) + 1
@@ -207,11 +209,14 @@ with tab1:
             f_owner = c10.selectbox("貼文負責人", POST_OWNERS, index=POST_OWNERS.index(post_data.get('postOwner', '一千')) if post_data else 0)
             f_designer = c11.selectbox("美編", [""] + DESIGNERS, index=(DESIGNERS.index(post_data['designer']) + 1) if post_data and post_data['designer'] else 0)
 
-            # Metrics Input (只有在非 Draft 且非限動時才需要)
             st.divider()
+            
+            # 日期計算提示
+            due_date_7d = f_date + timedelta(days=7)
+            due_date_1m = f_date + timedelta(days=30)
+            
             st.caption("數據填寫 (若狀態為已發布)")
             
-            # Helper to get metrics safely
             def get_m(key, period):
                 return post_data.get(period, {}).get(key, 0) if post_data else 0
 
@@ -219,7 +224,7 @@ with tab1:
             metrics_input = {'metrics7d': {}, 'metrics1m': {}}
             
             with m_cols[0]:
-                st.markdown("##### 🔥 7天成效")
+                st.markdown(f"##### 🔥 7天成效 <span style='font-size:0.7em; color:#ef4444; background:#fee2e2; padding:2px 6px; border-radius:4px;'>預計: {due_date_7d.strftime('%m/%d')}</span>", unsafe_allow_html=True)
                 metrics_input['metrics7d']['reach'] = st.number_input("7天-觸及", value=get_m('reach', 'metrics7d'), step=1)
                 metrics_input['metrics7d']['likes'] = st.number_input("7天-按讚", value=get_m('likes', 'metrics7d'), step=1)
                 c_sub1, c_sub2 = st.columns(2)
@@ -227,7 +232,7 @@ with tab1:
                 metrics_input['metrics7d']['shares'] = c_sub2.number_input("7天-分享", value=get_m('shares', 'metrics7d'), step=1)
 
             with m_cols[1]:
-                st.markdown("##### 🌳 一個月成效")
+                st.markdown(f"##### 🌳 一個月成效 <span style='font-size:0.7em; color:#a855f7; background:#f3e8ff; padding:2px 6px; border-radius:4px;'>預計: {due_date_1m.strftime('%m/%d')}</span>", unsafe_allow_html=True)
                 metrics_input['metrics1m']['reach'] = st.number_input("1月-觸及", value=get_m('reach', 'metrics1m'), step=1)
                 metrics_input['metrics1m']['likes'] = st.number_input("1月-按讚", value=get_m('likes', 'metrics1m'), step=1)
                 c_sub3, c_sub4 = st.columns(2)
@@ -256,7 +261,6 @@ with tab1:
                     }
 
                     if is_edit:
-                        # 更新現有
                         for i, p in enumerate(st.session_state.posts):
                             if p['id'] == post_data['id']:
                                 st.session_state.posts[i] = {**p, **new_base, 'platform': selected_platforms[0]}
@@ -264,7 +268,6 @@ with tab1:
                         st.session_state.editing_post = None
                         st.success("已更新！")
                     else:
-                        # 新增 (支援複選平台)
                         for p in selected_platforms:
                             new_post = {**new_base, 'id': str(uuid.uuid4()), 'platform': p}
                             st.session_state.posts.append(new_post)
@@ -278,10 +281,9 @@ with tab1:
                 st.session_state.editing_post = None
                 st.rerun()
 
-    # --- 列表顯示 ---
-    
-    # 篩選邏輯
+    # --- 列表顯示邏輯 ---
     filtered_posts = st.session_state.posts
+    
     if date_filter_type == "月":
         filtered_posts = [p for p in filtered_posts if p['date'].startswith(selected_month)]
     else:
@@ -289,221 +291,32 @@ with tab1:
     
     if filter_platform != "All":
         filtered_posts = [p for p in filtered_posts if p['platform'] == filter_platform]
+        
+    if filter_topic_keyword:
+        filtered_posts = [p for p in filtered_posts if filter_topic_keyword.lower() in p['topic'].lower()]
 
-    # 排序
-    filtered_posts.sort(key=lambda x: x['date'], reverse=True)
+    if filter_post_type != "All":
+        filtered_posts = [p for p in filtered_posts if p['postType'] == filter_post_type]
 
-    st.markdown(f"### 📋 排程列表 ({len(filtered_posts)})")
+    # 排序功能
+    col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
+    with col_sort1:
+        sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型", "狀態"], index=0)
+    with col_sort2:
+        sort_order = st.selectbox("順序", ["降序 (新->舊)", "升序 (舊->新)"], index=0)
 
-    # 轉換成 DataFrame 方便顯示
+    key_map = { "日期": "date", "平台": "platform", "主題": "topic", "貼文類型": "postType", "狀態": "status" }
+    reverse_sort = True if "降序" in sort_order else False
+    filtered_posts.sort(key=lambda x: x[key_map[sort_by]], reverse=reverse_sort)
+
+    with col_count:
+        st.write("")
+        st.markdown(f"**共篩選出 {len(filtered_posts)} 筆資料**")
+
+    st.divider()
+
     if filtered_posts:
         display_data = []
+        status_map = {'draft': '🌱 草稿', 'planned': '⏰ 已排程', 'published': '🚀 已發布'}
+
         for p in filtered_posts:
-            # 計算 KPI
-            perf_label, perf_color = get_performance_label(p['platform'], p.get('metrics7d', {}), p['postFormat'], st.session_state.standards)
-            
-            # 計算互動率顯示
-            m7 = p.get('metrics7d', {})
-            eng7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
-            reach7 = safe_num(m7.get('reach', 0))
-            rate7 = f"{(eng7/reach7*100):.1f}%" if reach7 > 0 and not is_metrics_disabled(p['platform'], p['postFormat']) else "-"
-
-            display_data.append({
-                'ID': p['id'],
-                '日期': p['date'],
-                '平台': f"{ICONS.get(p['platform'], '')} {p['platform']}",
-                '主題': p['topic'],
-                '類型': f"{p['postType']}-{p['postSubType']}" if p['postSubType'] else p['postType'],
-                '形式': p['postFormat'],
-                '負責人': f"{p['postOwner']} (D:{p['designer']})",
-                '狀態': {'draft': '🌱', 'planned': '⏰', 'published': '🚀'}[p['status']],
-                'KPI': perf_label,
-                '7天觸及': int(reach7),
-                '7天互動': int(eng7),
-                '7天率': rate7,
-                '_raw': p  # 保留原始數據用於操作
-            })
-        
-        df = pd.DataFrame(display_data)
-        
-        # 操作按鈕欄位
-        col_list = st.columns([0.8, 0.8, 2, 1, 1, 1, 1, 0.8, 0.8, 0.5, 0.5])
-        headers = ["日期", "平台", "主題", "類型", "負責人", "狀態", "KPI", "觸及(7d)", "互動(7d)", "編輯", "刪除"]
-        
-        # 表頭
-        for col, h in zip(col_list, headers):
-            col.markdown(f"**{h}**")
-            
-        st.divider()
-
-        for index, row in df.iterrows():
-            cols = st.columns([0.8, 0.8, 2, 1, 1, 1, 1, 0.8, 0.8, 0.5, 0.5])
-            
-            cols[0].write(row['日期'])
-            cols[1].write(row['平台'])
-            cols[2].write(row['主題'])
-            cols[3].write(row['類型'])
-            cols[4].write(row['負責人'])
-            cols[5].write(row['狀態'])
-            
-            # KPI Badge (Markdown HTML)
-            raw_p = row['_raw']
-            label, color = get_performance_label(raw_p['platform'], raw_p.get('metrics7d'), raw_p['postFormat'], st.session_state.standards)
-            cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
-            
-            cols[7].write(f"{row['7天觸及']:,}")
-            cols[8].write(f"{row['7天互動']:,}")
-            
-            # 操作
-            if cols[9].button("✏️", key=f"edit_{row['ID']}"):
-                st.session_state.editing_post = row['_raw']
-                st.rerun()
-            
-            if cols[10].button("🗑️", key=f"del_{row['ID']}"):
-                st.session_state.posts = [p for p in st.session_state.posts if p['id'] != row['ID']]
-                save_data(st.session_state.posts)
-                st.rerun()
-            
-            st.divider()
-
-        # CSV 匯出
-        csv = df.drop(columns=['_raw', 'ID']).to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 匯出 CSV",
-            data=csv,
-            file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv"
-        )
-    else:
-        st.info("目前沒有符合條件的排程資料。")
-
-# === TAB 2: 數據分析 ===
-with tab2:
-    
-    # --- KPI 設定 (Expander) ---
-    with st.expander("⚙️ KPI 標準設定"):
-        std = st.session_state.standards
-        
-        c_fb, c_ig, c_others = st.columns(3)
-        with c_fb:
-            st.subheader("Facebook")
-            for level in ['high', 'std', 'low']:
-                l_name = {'high': '🏆 高標', 'std': '✅ 標準', 'low': '🤏 低標'}[level]
-                st.caption(l_name)
-                c_1, c_2 = st.columns(2)
-                std['Facebook'][level]['reach'] = c_1.number_input(f"FB {level} 觸及", value=std['Facebook'][level]['reach'])
-                std['Facebook'][level]['rate'] = c_2.number_input(f"FB {level} 率(%)", value=std['Facebook'][level]['rate'])
-        
-        with c_ig:
-            st.subheader("Instagram")
-            std['Instagram']['reach'] = st.number_input("IG 觸及目標", value=std['Instagram']['reach'])
-            std['Instagram']['engagement'] = st.number_input("IG 互動數目標", value=std['Instagram']['engagement'])
-            std['Instagram']['rate'] = st.number_input("IG 互動率目標(%)", value=std['Instagram']['rate'])
-
-        with c_others:
-            st.subheader("其他")
-            std['YouTube']['reach'] = st.number_input("YT 觸及", value=std['YouTube']['reach'])
-            std['Threads']['reach'] = st.number_input("Threads 瀏覽標竿", value=std['Threads']['reach'])
-        
-        if st.button("儲存設定"):
-            st.session_state.standards = std
-            save_standards(std)
-            st.success("KPI 設定已更新！")
-
-    # --- 數據概覽 ---
-    # 使用與 Tab 1 相同的 filtered_posts (根據日期與平台)
-    published_posts = [p for p in filtered_posts if p['status'] == 'published']
-    
-    st.markdown("### 📊 總體成效概覽")
-    
-    # 選擇分析週期
-    period = st.radio("分析基準", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天成效" if x == "metrics7d" else "🌳 一個月成效", horizontal=True)
-    
-    # 計算總數
-    total_reach = 0
-    total_engagement = 0
-    
-    for p in published_posts:
-        if is_metrics_disabled(p['platform'], p['postFormat']):
-            continue
-        m = p.get(period, {})
-        # Threads/Line@ 不計入總觸及加總 (邏輯與 React 版一致)
-        if p['platform'] not in ['Threads', 'LINE@']:
-            total_reach += safe_num(m.get('reach', 0))
-        
-        if p['platform'] != 'LINE@':
-            total_engagement += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
-
-    kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("已發布篇數", len(published_posts))
-    kpi2.metric("總觸及 (不含Threads/Line)", f"{int(total_reach):,}")
-    kpi3.metric("總互動", f"{int(total_engagement):,}")
-
-    st.markdown("---")
-
-    # --- 平台詳細分析 (Table) ---
-    st.markdown("### 📈 各平台成效明細")
-    
-    platform_stats = []
-    
-    for pf in PLATFORMS:
-        if filter_platform != "All" and filter_platform != pf:
-            continue
-            
-        posts_in_pf = [p for p in published_posts if p['platform'] == pf]
-        
-        count = len(posts_in_pf)
-        sum_reach = 0
-        sum_engage = 0
-        
-        for p in posts_in_pf:
-            if is_metrics_disabled(p['platform'], p['postFormat']): continue
-            m = p.get(period, {})
-            sum_reach += safe_num(m.get('reach', 0))
-            sum_engage += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
-        
-        avg_rate = (sum_engage / sum_reach * 100) if sum_reach > 0 else 0
-        
-        # 短影音分析
-        short_posts = [p for p in posts_in_pf if p['postFormat'] == '短影音']
-        s_count = len(short_posts)
-        s_reach = 0
-        s_engage = 0
-        for p in short_posts:
-            m = p.get(period, {})
-            s_reach += safe_num(m.get('reach', 0))
-            s_engage += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
-        s_rate = (s_engage / s_reach * 100) if s_reach > 0 else 0
-
-        platform_stats.append({
-            '平台': pf,
-            '篇數': count,
-            '總觸及': int(sum_reach),
-            '總互動': int(sum_engage),
-            '互動率': f"{avg_rate:.2f}%",
-            '短影音佔比': f"{s_count}篇 ({s_rate:.2f}%)" if s_count > 0 else "-"
-        })
-
-    st.dataframe(
-        pd.DataFrame(platform_stats),
-        column_config={
-            "總觸及": st.column_config.NumberColumn(format="%d"),
-            "總互動": st.column_config.NumberColumn(format="%d"),
-        },
-        use_container_width=True,
-        hide_index=True
-    )
-
-    # --- 類型分佈圖 ---
-    st.markdown("### 🍰 貼文類型分佈")
-    
-    type_dist = {}
-    for p in published_posts:
-        t = p['postType']
-        type_dist[t] = type_dist.get(t, 0) + 1
-    
-    if type_dist:
-        dist_df = pd.DataFrame(list(type_dist.items()), columns=['類型', '數量']).set_index('類型')
-        st.bar_chart(dist_df)
-    else:
-        st.caption("無數據")
