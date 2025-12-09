@@ -11,7 +11,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# --- 常數設定 (與 React 版本一致) ---
+# --- 常數設定 ---
 FILE_PATH = "social_posts_data.csv"
 
 PLATFORMS = ['Facebook', 'Instagram', 'LINE@', 'YouTube', 'Threads']
@@ -38,32 +38,42 @@ KPI_STANDARDS = {
 def load_data():
     """讀取 CSV 資料，若無則建立預設資料"""
     if os.path.exists(FILE_PATH):
-        df = pd.read_csv(FILE_PATH)
-        # 確保欄位型別正確，避免錯誤
-        num_cols = ['reach_7d', 'likes_7d', 'comments_7d', 'shares_7d', 
-                    'reach_1m', 'likes_1m', 'comments_1m', 'shares_1m']
-        for col in num_cols:
-            if col not in df.columns:
-                df[col] = 0
-            df[col] = df[col].fillna(0).astype(int)
-        
-        # 確保日期欄位是字串
-        df['date'] = df['date'].astype(str)
-        return df
+        try:
+            df = pd.read_csv(FILE_PATH)
+            # 確保欄位型別正確，避免錯誤
+            num_cols = ['reach_7d', 'likes_7d', 'comments_7d', 'shares_7d', 
+                        'reach_1m', 'likes_1m', 'comments_1m', 'shares_1m']
+            for col in num_cols:
+                if col not in df.columns:
+                    df[col] = 0
+                df[col] = df[col].fillna(0).astype(int)
+            
+            # [重要修復] 將日期字串轉換為 date 物件，避免 data_editor 報錯
+            df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.date
+            # 填補無效日期為今天
+            df['date'] = df['date'].fillna(datetime.now().date())
+            
+            return df
+        except Exception as e:
+            st.error(f"讀取資料失敗，將建立新檔案: {e}")
+            return create_default_data()
     else:
-        # 預設範例資料
-        return pd.DataFrame([{
-            'id': int(datetime.now().timestamp()),
-            'date': datetime.now().strftime('%Y-%m-%d'),
-            'platform': 'Facebook',
-            'topic': '範例：新春活動預告',
-            'type': '喜餅', 'sub_type': '新春',
-            'purpose': '廣告', 'format': '單圖',
-            'owner_project': '夢涵', 'owner_post': '一千', 'owner_design': '千惟',
-            'status': '草稿',
-            'reach_7d': 0, 'likes_7d': 0, 'comments_7d': 0, 'shares_7d': 0,
-            'reach_1m': 0, 'likes_1m': 0, 'comments_1m': 0, 'shares_1m': 0
-        }])
+        return create_default_data()
+
+def create_default_data():
+    # 預設範例資料
+    return pd.DataFrame([{
+        'id': int(datetime.now().timestamp()),
+        'date': datetime.now().date(),
+        'platform': 'Facebook',
+        'topic': '範例：新春活動預告',
+        'type': '喜餅', 'sub_type': '新春',
+        'purpose': '廣告', 'format': '單圖',
+        'owner_project': '夢涵', 'owner_post': '一千', 'owner_design': '千惟',
+        'status': '草稿',
+        'reach_7d': 0, 'likes_7d': 0, 'comments_7d': 0, 'shares_7d': 0,
+        'reach_1m': 0, 'likes_1m': 0, 'comments_1m': 0, 'shares_1m': 0
+    }])
 
 def save_data(df):
     """儲存資料到 CSV"""
@@ -118,8 +128,13 @@ def get_due_status(row):
     if row['status'] != '已發布' or row['platform'] == 'LINE@' or row['format'] in ['限動', '留言處']:
         return None
     
-    pub_date = datetime.strptime(row['date'], '%Y-%m-%d')
-    today = datetime.now()
+    # row['date'] 已經是 date 物件
+    pub_date = row['date']
+    if not isinstance(pub_date, (datetime, type(datetime.now().date()))):
+         # 防呆：如果日期格式錯誤
+         return None
+
+    today = datetime.now().date()
     
     due_7d = pub_date + timedelta(days=7)
     due_1m = pub_date + timedelta(days=30)
@@ -147,20 +162,21 @@ def main():
     with st.sidebar:
         st.header("🔍 篩選條件")
         
-        # 月份篩選邏輯
-        all_months = sorted(list(set([d[:7] for d in df['date']])), reverse=True)
+        # 轉換日期為字串以便篩選月份
+        df['date_str'] = df['date'].apply(lambda x: x.strftime('%Y-%m'))
+        all_months = sorted(list(set(df['date_str'])), reverse=True)
         if not all_months: all_months = [datetime.now().strftime('%Y-%m')]
         
         filter_mode = st.radio("時間篩選", ["依月份", "自訂區間"], horizontal=True)
         
         if filter_mode == "依月份":
             selected_month = st.selectbox("選擇月份", all_months)
-            mask_date = df['date'].str.startswith(selected_month)
+            mask_date = df['date_str'] == selected_month
         else:
             d_start = st.date_input("開始日期", value=datetime.now().replace(day=1))
             d_end = st.date_input("結束日期", value=datetime.now())
-            mask_date = (pd.to_datetime(df['date']) >= pd.to_datetime(d_start)) & \
-                        (pd.to_datetime(df['date']) <= pd.to_datetime(d_end))
+            mask_date = (pd.to_datetime(df['date']).dt.date >= d_start) & \
+                        (pd.to_datetime(df['date']).dt.date <= d_end)
 
         selected_platform = st.selectbox("平台", ["全部"] + PLATFORMS)
         mask_platform = (df['platform'] == selected_platform) if selected_platform != "全部" else [True] * len(df)
@@ -169,7 +185,7 @@ def main():
         filtered_df = df[mask_date & mask_platform].copy()
 
     # --- 主頁面 ---
-    st.title("📅 社群排程小幫手 (Python版)")
+    st.title("📅 社群排程小幫手")
     
     tab1, tab2 = st.tabs(["📝 排程管理", "📊 成效分析"])
 
@@ -203,7 +219,7 @@ def main():
                     for p in new_platforms:
                         new_row = {
                             'id': int(datetime.now().timestamp() * 1000) + len(new_rows), # Unique ID
-                            'date': new_date.strftime('%Y-%m-%d'),
+                            'date': new_date, # 直接存 date object
                             'platform': p,
                             'topic': new_topic,
                             'type': new_type,
@@ -221,6 +237,8 @@ def main():
                     
                     if new_rows:
                         new_df = pd.DataFrame(new_rows)
+                        # 確保新資料的日期欄位型別一致
+                        new_df['date'] = pd.to_datetime(new_df['date']).dt.date
                         st.session_state.df = pd.concat([st.session_state.df, new_df], ignore_index=True)
                         save_data(st.session_state.df)
                         st.success(f"已新增 {len(new_rows)} 筆排程！")
@@ -230,7 +248,7 @@ def main():
         st.subheader("📋 排程列表")
         st.caption("💡 提示：直接點擊表格內容即可修改，修改後會自動儲存。勾選左側框框可刪除。")
 
-        # 準備顯示用的 DataFrame (添加計算欄位)
+        # 準備顯示用的 DataFrame
         display_df = filtered_df.sort_values(by='date', ascending=False).copy()
         
         # 計算提醒狀態
@@ -249,8 +267,9 @@ def main():
 
         # 設定表格編輯器
         column_config = {
-            "id": None, # 隱藏 ID
-            "date": st.column_config.DateColumn("日期", format="YYYY-MM-DD"),
+            "id": None, 
+            "date_str": None, # 隱藏輔助欄位
+            "date": st.column_config.DateColumn("日期", format="YYYY-MM-DD", width="small"),
             "platform": st.column_config.SelectboxColumn("平台", options=PLATFORMS, width="small"),
             "topic": st.column_config.TextColumn("主題", width="medium"),
             "type": st.column_config.SelectboxColumn("類型", options=POST_TYPES, width="small"),
@@ -275,26 +294,24 @@ def main():
             "KPI等級": st.column_config.TextColumn("KPI (7天)", disabled=True),
         }
 
-        # 顯示可編輯表格
+        # 顯示可編輯表格 (使用 fixed row 避免新增錯誤)
         edited_data = st.data_editor(
             display_df,
             column_config=column_config,
             use_container_width=True,
-            num_rows="dynamic",
+            num_rows="fixed", 
             key="editor",
             hide_index=True,
-            disabled=["提醒", "7天互動率", "月互動率", "KPI等級"] # 禁止編輯計算欄位
+            disabled=["提醒", "7天互動率", "月互動率", "KPI等級"]
         )
 
         # 處理資料更新與刪除
-        # Streamlit data_editor 回傳的是編輯後的 view，我們需要將變更同步回原始 session_state.df
         if st.session_state.get("editor"):
             changes = st.session_state["editor"]
             
             # 1. 處理刪除
             if changes["deleted_rows"]:
                 indices_to_delete = changes["deleted_rows"]
-                # 注意：這裡的 index 是 display_df 的 index，對應回原始 df 的 index
                 ids_to_delete = display_df.iloc[indices_to_delete]['id'].tolist()
                 st.session_state.df = st.session_state.df[~st.session_state.df['id'].isin(ids_to_delete)]
                 save_data(st.session_state.df)
@@ -303,13 +320,10 @@ def main():
             # 2. 處理修改
             if changes["edited_rows"]:
                 for idx, change in changes["edited_rows"].items():
-                    # idx 是 display_df 的 index (也是原始 df 的 index，如果沒有 reset_index)
-                    # 獲取該行的真實 ID
                     real_id = display_df.iloc[idx]['id']
                     
-                    # 更新原始資料
                     for key, value in change.items():
-                        # 特別處理：如果選了 LINE@ 或 限動，將數據歸零
+                        # 特別處理：如果選了 LINE@ 或 限動/留言處，將數據歸零
                         if key in ['platform', 'format']:
                             row = st.session_state.df.loc[st.session_state.df['id'] == real_id].iloc[0]
                             new_p = value if key == 'platform' else row['platform']
@@ -322,7 +336,6 @@ def main():
                         st.session_state.df.loc[st.session_state.df['id'] == real_id, key] = value
                 
                 save_data(st.session_state.df)
-                # 不用 rerun，讓使用者繼續編輯
 
     # === Tab 2: 成效分析 ===
     with tab2:
@@ -336,27 +349,25 @@ def main():
         purpose_filter = col_f2.radio("目的類型", ["全部", "💰 廣告類", "💬 非廣告類"], horizontal=True)
 
         # 準備分析資料
-        # 1. 已發布的貼文
         analytics_df = filtered_df[filtered_df['status'] == '已發布'].copy()
         
-        # 2. 目的篩選
         if purpose_filter == "💰 廣告類":
             analytics_df = analytics_df[analytics_df['purpose'].isin(['廣告', '門市廣告'])]
         elif purpose_filter == "💬 非廣告類":
             analytics_df = analytics_df[~analytics_df['purpose'].isin(['廣告', '門市廣告'])]
 
-        # 3. 排除不計算的貼文 (限動、留言處) 用於計算總分
+        # 排除不計算的貼文 (限動、留言處)
         calculable_df = analytics_df[~analytics_df['format'].isin(['限動', '留言處'])].copy()
         
-        # 4. 總數據計算 (排除 LINE@ 與 Threads 視需求)
-        # 這裡邏輯：總觸及排除 LINE@ & Threads
-        total_reach = calculable_df[~calculable_df['platform'].isin(['LINE@', 'Threads'])][f'reach{period_suffix}'].sum()
+        # [重要修復] 總數據計算 (轉為 float/int 避免 numpy 類型問題)
+        # 總觸及：排除 LINE@ & Threads
+        total_reach = int(calculable_df[~calculable_df['platform'].isin(['LINE@', 'Threads'])][f'reach{period_suffix}'].sum())
         
-        # 總互動排除 LINE@
+        # 總互動：排除 LINE@
         total_engagement_df = calculable_df[calculable_df['platform'] != 'LINE@']
-        total_engagement = (total_engagement_df[f'likes{period_suffix}'] + 
+        total_engagement = int((total_engagement_df[f'likes{period_suffix}'] + 
                             total_engagement_df[f'comments{period_suffix}'] + 
-                            total_engagement_df[f'shares{period_suffix}']).sum()
+                            total_engagement_df[f'shares{period_suffix}']).sum())
         
         # 顯示 KPI
         k1, k2, k3 = st.columns(3)
@@ -371,17 +382,16 @@ def main():
         
         platform_stats = []
         for p in platforms:
-            if filterPlatform != 'All' and p != filterPlatform: continue
+            if selected_platform != '全部' and p != selected_platform: continue
             
             p_df = analytics_df[analytics_df['platform'] == p]
-            # 統計包含限動的總篇數
             count = len(p_df)
             
             # 計算成效時排除限動/留言處
             p_calc_df = p_df[~p_df['format'].isin(['限動', '留言處'])]
             
-            p_reach = p_calc_df[f'reach{period_suffix}'].sum()
-            p_eng = (p_calc_df[f'likes{period_suffix}'] + p_calc_df[f'comments{period_suffix}'] + p_calc_df[f'shares{period_suffix}']).sum()
+            p_reach = int(p_calc_df[f'reach{period_suffix}'].sum())
+            p_eng = int((p_calc_df[f'likes{period_suffix}'] + p_calc_df[f'comments{period_suffix}'] + p_calc_df[f'shares{period_suffix}']).sum())
             
             p_rate = 0
             if p_reach > 0 and p not in ['Threads', 'LINE@']:
@@ -399,8 +409,9 @@ def main():
             pd.DataFrame(platform_stats).set_index("平台"),
             use_container_width=True,
             column_config={
-                "總觸及/瀏覽": st.column_config.ProgressColumn(format="%d", min_value=0, max_value=total_reach if total_reach > 0 else 100),
-                "總互動": st.column_config.ProgressColumn(format="%d", min_value=0, max_value=total_engagement if total_engagement > 0 else 100),
+                # [重要修復] 確保 max_value 是 int，且不為 0
+                "總觸及/瀏覽": st.column_config.ProgressColumn(format="%d", min_value=0, max_value=int(total_reach) if total_reach > 0 else 100),
+                "總互動": st.column_config.ProgressColumn(format="%d", min_value=0, max_value=int(total_engagement) if total_engagement > 0 else 100),
             }
         )
         
