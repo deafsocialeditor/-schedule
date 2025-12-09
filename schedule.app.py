@@ -1,9 +1,9 @@
 import streamlit as st
-import streamlit.components.v1 as components  # 新增：用於執行 JavaScript 滾動
 import pandas as pd
 import json
 import os
 import uuid
+import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
@@ -127,11 +127,8 @@ def get_performance_label(platform, metrics, fmt, standards):
 def edit_post_callback(post):
     """點擊編輯按鈕時觸發"""
     st.session_state.editing_post = post
-    
-    # 設定滾動標記 -> True，讓頁面重新整理後執行 JS
     st.session_state.scroll_to_top = True
     
-    # 預填表單
     try:
         st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
     except:
@@ -176,8 +173,6 @@ if 'standards' not in st.session_state:
     st.session_state.standards = load_standards()
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
-    
-# 初始化滾動標記
 if 'scroll_to_top' not in st.session_state:
     st.session_state.scroll_to_top = False
 
@@ -450,7 +445,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        # 修正：定義 12 個欄位的寬度 (最後一個是刪除按鈕)
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -507,7 +503,8 @@ with tab1:
             })
 
             with st.container():
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                # 修正：使用 12 個欄位
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
