@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效",
+    page_title="社群排程與成效管家",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -491,18 +491,19 @@ with tab1:
                             for p in day_posts:
                                 p_color = platform_colors.get(p['platform'], '#6b7280')
                                 
-                                # 修改：使用 HTML div 來呈現標籤 (純顯示，不可點擊)
+                                # 修改：使用 st.markdown 顯示色塊標籤 (不可點擊)
                                 st.markdown(f"""
                                     <div style="
                                         background-color: {p_color};
                                         color: white;
-                                        padding: 3px 6px;
+                                        padding: 4px 6px;
                                         margin-bottom: 4px;
                                         border-radius: 4px;
-                                        font-size: 0.8em;
+                                        font-size: 0.85em;
                                         white-space: nowrap;
                                         overflow: hidden;
                                         text-overflow: ellipsis;
+                                        cursor: default;
                                     " title="{p['platform']} - {p['topic']}">
                                         {ICONS.get(p['platform'],'')} {p['topic']}
                                     </div>
@@ -677,7 +678,6 @@ with tab2:
     published_posts = [p for p in filtered_posts]
     target_posts = published_posts
     
-    # 修正：精確判斷內容類型
     if ad_filter_val == "💰 廣告成效 (僅廣告/門市廣告)":
         target_posts = [p for p in target_posts if p['postPurpose'] in AD_PURPOSE_LIST]
     elif ad_filter_val == "💬 非廣告成效 (排除廣告)":
@@ -767,13 +767,16 @@ with tab2:
             data_for_dist.append({'Platform': p['platform'], 'Type': p['postType']})
         
         df_dist = pd.DataFrame(data_for_dist)
-        pivot_df = pd.crosstab(df_dist['Platform'], df_dist['Type'])
+        pivot_df = pd.crosstab(df_dist['Platform'], df_dist['Type'], margins=True, margins_name="總計")
+        
         existing_platforms = [p for p in PLATFORMS if p in pivot_df.index]
-        pivot_df = pivot_df.reindex(existing_platforms)
+        final_index = existing_platforms + ["總計"]
+        pivot_df = pivot_df.reindex(final_index)
 
         if view_type == "📄 表格模式":
             st.dataframe(pivot_df, use_container_width=True)
         else:
-            st.bar_chart(pivot_df)
+            chart_df = pivot_df.drop(index="總計", columns="總計", errors='ignore')
+            st.bar_chart(chart_df)
     else:
         st.caption("無符合條件的貼文數據")
