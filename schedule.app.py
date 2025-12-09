@@ -128,7 +128,7 @@ if 'standards' not in st.session_state:
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
 
-# --- 4. 自訂 CSS (白色背景) ---
+# --- 4. 自訂 CSS (白色背景 + 今日高亮樣式) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -140,6 +140,18 @@ st.markdown("""
     .red { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
     .gray { background-color: #f3f4f6; color: #9ca3af; }
     .overdue-alert { color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }
+    
+    /* 今日高亮標籤樣式 */
+    .today-highlight {
+        background-color: #fef9c3; /* 亮黃色背景 */
+        color: #b45309; /* 深橘色文字 */
+        padding: 5px 10px;
+        border-radius: 8px;
+        font-weight: 900;
+        border: 2px solid #fcd34d; /* 黃色邊框 */
+        display: inline-block;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -203,8 +215,6 @@ with tab1:
             
         f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), index=sub_index)
         
-        # 移除狀態選單，預設都是已發布
-        
         c7, c8 = st.columns(2)
         f_purpose = c7.selectbox("目的", POST_PURPOSES, index=POST_PURPOSES.index(post_data.get('postPurpose', '互動')) if post_data else 0)
         f_format = c8.selectbox("形式", POST_FORMATS, index=POST_FORMATS.index(post_data.get('postFormat', '單圖')) if post_data else 0)
@@ -219,7 +229,6 @@ with tab1:
         due_date_7d = f_date + timedelta(days=7)
         due_date_1m = f_date + timedelta(days=30)
         
-        # 判斷顯示邏輯
         current_platform = selected_platforms[0] if selected_platforms else 'Facebook'
         hide_metrics = is_metrics_disabled(current_platform, f_format)
         
@@ -285,7 +294,6 @@ with tab1:
                 else:
                     for p in selected_platforms:
                         new_post = {**new_base, 'id': str(uuid.uuid4()), 'platform': p}
-                        # 再次檢查：如果該平台不需要填寫成效，清空數據
                         if is_metrics_disabled(p, f_format):
                             new_post['metrics7d'] = {}
                             new_post['metrics1m'] = {}
@@ -340,8 +348,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        # 修改：增加 columns 數量到 12 (0-11)，對應表頭與操作
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        # Columns 數量為 12
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -374,6 +382,7 @@ with tab1:
                 is_due = False
                 
                 if not is_metrics_disabled(p['platform'], p['postFormat']):
+                    # 邏輯：今天日期 >= 應填日期 (亦即到了該填的那天或過了)，且數據為0
                     if today_date_obj >= due_date and reach == 0:
                         is_due = True
                 
@@ -400,18 +409,13 @@ with tab1:
                 '_raw': p 
             })
 
-            # 如果是今天，使用 st.warning 容器包覆整條 (顯示為黃色區塊)
-            if is_today:
-                row_wrapper = st.warning(icon="✨")
-            else:
-                row_wrapper = st.container()
-
-            with row_wrapper:
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+            # 使用標準 container
+            with st.container():
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                 
-                # 如果是今天，加個標記 (雖然容器已經有 icon 了)
+                # 如果是今天，日期欄位加上黃底樣式
                 if is_today:
-                    cols[0].write(f"**{p['date']}**")
+                    cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
                 else:
                     cols[0].write(p['date'])
 
@@ -450,7 +454,10 @@ with tab1:
                     d_c3.metric(f"30天-{r_label}", f"{r30:,}")
                     d_c4.metric("30天-互動", f"{e30:,}")
 
-            if not is_today:
+            # 分隔線邏輯：今天用粗黃線，其他用一般灰線
+            if is_today:
+                st.markdown("<hr style='margin: 0; border-top: 2px solid #fcd34d;'>", unsafe_allow_html=True)
+            else:
                 st.markdown("<hr style='margin: 0; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
 
         if display_data:
