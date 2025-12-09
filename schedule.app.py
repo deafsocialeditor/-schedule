@@ -20,7 +20,7 @@ DATA_FILE = "social_posts.json"
 STANDARDS_FILE = "social_standards.json"
 
 # 選項定義
-PLATFORMS = ['Facebook', 'Instagram', 'LINE@', 'YouTube', 'Threads']
+PLATFORMS = ['Facebook', '社團','Instagram', 'LINE@', 'YouTube', 'Threads']
 MAIN_POST_TYPES = ['喜餅', '彌月', '伴手禮', '社群互動', '圓夢計畫', '公告']
 SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
