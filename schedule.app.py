@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import os
 import uuid
+import calendar  # <--- 修復：補上這個漏掉的 import
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
@@ -199,6 +200,11 @@ st.markdown("""
         display: inline-block;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
+    
+    /* 日曆樣式 */
+    .cal-day-header { text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 5px; }
+    .cal-day-cell { min-height: 100px; padding: 5px; border-radius: 8px; font-size: 0.8em; }
+    .cal-day-num { font-weight: bold; font-size: 1.1em; color: #374151; margin-bottom: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -206,10 +212,7 @@ st.markdown("""
 with st.sidebar:
     st.title("🔎 篩選條件")
     filter_platform = st.selectbox("平台", ["All"] + PLATFORMS, index=0)
-    
-    # 新增：負責人篩選
     filter_owner = st.selectbox("負責人", ["All"] + POST_OWNERS, index=0)
-    
     filter_post_type = st.selectbox("貼文類型", ["All"] + MAIN_POST_TYPES, index=0)
     filter_purpose = st.selectbox("目的", ["All"] + POST_PURPOSES, index=0)
     filter_format = st.selectbox("形式", ["All"] + POST_FORMATS, index=0)
@@ -235,6 +238,7 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
+    # --- 新增：自動滾動到頂部 (JavaScript 強制版) ---
     if st.session_state.scroll_to_top:
         components.html(
             """
@@ -430,7 +434,7 @@ with tab1:
     if filter_platform != "All":
         filtered_posts = [p for p in filtered_posts if p['platform'] == filter_platform]
     
-    # 新增：負責人篩選邏輯
+    # 負責人篩選
     if filter_owner != "All":
         filtered_posts = [p for p in filtered_posts if p['postOwner'] == filter_owner]
 
@@ -448,7 +452,6 @@ with tab1:
     st.write("") 
 
     if view_mode == "🗓️ 日曆模式":
-        # 日曆模式代碼...
         if date_filter_type == "月":
             year_str, month_str = selected_month.split("-")
             cal_year, cal_month = int(year_str), int(month_str)
@@ -512,8 +515,7 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            # 修正：表頭標籤文字修改
-            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             
             for col, h in zip(col_list, headers):
@@ -570,7 +572,7 @@ with tab1:
                 })
 
                 with st.container():
-                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                     
                     if is_today:
                         cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
