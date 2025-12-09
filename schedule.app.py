@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components # 新增這個 import
 import pandas as pd
 import json
 import os
@@ -7,7 +8,7 @@ from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效",
+    page_title="社群排程與成效管家",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -24,7 +25,7 @@ SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
 
-# 專案負責人
+# 專案負責人 (含門市)
 PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
 POST_OWNERS = ['一千', '凱曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
@@ -127,6 +128,9 @@ def edit_post_callback(post):
     """點擊編輯按鈕時觸發"""
     st.session_state.editing_post = post
     
+    # 設定滾動標記
+    st.session_state.scroll_to_top = True
+    
     # 預填表單 (使用 session state key)
     try:
         st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
@@ -174,6 +178,8 @@ if 'standards' not in st.session_state:
     st.session_state.standards = load_standards()
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
+if 'scroll_to_top' not in st.session_state:
+    st.session_state.scroll_to_top = False
 
 # --- 4. 自訂 CSS ---
 st.markdown("""
@@ -204,6 +210,7 @@ st.markdown("""
 # --- 5. 側邊欄篩選 ---
 with st.sidebar:
     st.title("🔎 篩選條件")
+    
     filter_platform = st.selectbox("平台", ["All"] + PLATFORMS, index=0)
     filter_post_type = st.selectbox("貼文類型", ["All"] + MAIN_POST_TYPES, index=0)
     filter_purpose = st.selectbox("目的", ["All"] + POST_PURPOSES, index=0)
@@ -230,9 +237,22 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
+    # --- JS Scroll Logic ---
+    # 如果標記為 True，注入 JavaScript 滾動到頂部，然後重置標記
+    if st.session_state.scroll_to_top:
+        components.html(
+            """
+                <script>
+                    window.parent.document.querySelector('section.main').scrollTo(0, 0);
+                </script>
+            """,
+            height=0
+        )
+        st.session_state.scroll_to_top = False
+
+    # --- 新增/編輯區塊 ---
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
-        # 如果正在編輯，提取出 target_id，避免后续使用 undefined variable
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
         
         # === 狀態初始化 ===
@@ -290,11 +310,10 @@ with tab1:
 
         st.divider()
         
-        # 轉換 date_input 的值 (date object) 為 datetime 或直接計算
         if isinstance(f_date, datetime):
             f_date_obj = f_date.date()
         else:
-            f_date_obj = f_date # 已經是 date object
+            f_date_obj = f_date
 
         due_date_7d = f_date_obj + timedelta(days=7)
         due_date_1m = f_date_obj + timedelta(days=30)
@@ -334,7 +353,6 @@ with tab1:
                 st.error("請填寫主題")
             else:
                 if is_edit:
-                    # 使用 target_edit_id 來確保 ID 正確
                     p = selected_platforms[0]
                     final_purpose = platform_purposes[p]
                     
@@ -354,7 +372,7 @@ with tab1:
                     }
                     
                     for i, p_data in enumerate(st.session_state.posts):
-                        if p_data['id'] == target_edit_id: # 修正這裡：使用明確的變數
+                        if p_data['id'] == target_edit_id:
                             st.session_state.posts[i] = {**p_data, **new_base, 'platform': p}
                             break
                     st.session_state.editing_post = None
@@ -399,7 +417,7 @@ with tab1:
                     del st.session_state[key]
                 st.rerun()
 
-    # --- 列表顯示 ---
+    # --- 列表顯示邏輯 ---
     filtered_posts = st.session_state.posts
     
     if date_filter_type == "月":
