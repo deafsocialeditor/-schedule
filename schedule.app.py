@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import os
 import uuid
+import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
@@ -126,8 +127,8 @@ def get_performance_label(platform, metrics, fmt, standards):
 def edit_post_callback(post):
     """點擊編輯按鈕時觸發"""
     st.session_state.editing_post = post
+    st.session_state.scroll_to_top = True
     
-    # 預填表單
     try:
         st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
     except:
@@ -172,6 +173,8 @@ if 'standards' not in st.session_state:
     st.session_state.standards = load_standards()
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
+if 'scroll_to_top' not in st.session_state:
+    st.session_state.scroll_to_top = False
 
 # --- 4. 自訂 CSS ---
 st.markdown("""
@@ -228,6 +231,13 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
+    if st.session_state.scroll_to_top:
+        components.html(
+            """<script>window.parent.document.querySelector('section.main').scrollTo(0, 0);</script>""",
+            height=0
+        )
+        st.session_state.scroll_to_top = False
+
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
@@ -393,7 +403,7 @@ with tab1:
                     del st.session_state[key]
                 st.rerun()
 
-    # --- 列表顯示邏輯 ---
+    # --- 列表顯示 ---
     filtered_posts = st.session_state.posts
     
     if date_filter_type == "月":
@@ -429,7 +439,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        # 修改：columns 數量設定為 12，確保有足夠空間放按鈕
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -449,7 +460,6 @@ with tab1:
             def calc_rate_and_check_due(metrics, days_offset):
                 eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
                 reach = safe_num(metrics.get('reach', 0))
-                
                 rate_str = "-"
                 if p['platform'] == 'Threads':
                     rate_str = "-"
@@ -463,7 +473,6 @@ with tab1:
                 if not is_metrics_disabled(p['platform'], p['postFormat']):
                     if today_date_obj >= due_date and reach == 0:
                         is_due = True
-                
                 return rate_str, is_due, int(reach), int(eng)
 
             rate7, overdue7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
@@ -488,7 +497,8 @@ with tab1:
             })
 
             with st.container():
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                # 欄位定義 (12欄)
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
