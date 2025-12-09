@@ -3,13 +3,13 @@ import pandas as pd
 import json
 import os
 import uuid
-import calendar  # <--- 修復：補上這個漏掉的 import
+import calendar
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效管家",
+    page_title="社群排程與成效",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -433,11 +433,8 @@ with tab1:
     
     if filter_platform != "All":
         filtered_posts = [p for p in filtered_posts if p['platform'] == filter_platform]
-    
-    # 負責人篩選
     if filter_owner != "All":
         filtered_posts = [p for p in filtered_posts if p['postOwner'] == filter_owner]
-
     if filter_topic_keyword:
         filtered_posts = [p for p in filtered_posts if filter_topic_keyword.lower() in p['topic'].lower()]
     if filter_post_type != "All":
@@ -492,10 +489,25 @@ with tab1:
                             day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
                             
                             for p in day_posts:
-                                label = f"{ICONS.get(p['platform'],'')} {p['topic'][:6]}.."
-                                if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}"):
-                                    edit_post_callback(p)
-                                    st.rerun()
+                                p_color = platform_colors.get(p['platform'], '#6b7280')
+                                
+                                # 修改：使用 HTML div 來呈現標籤 (純顯示，不可點擊)
+                                st.markdown(f"""
+                                    <div style="
+                                        background-color: {p_color};
+                                        color: white;
+                                        padding: 3px 6px;
+                                        margin-bottom: 4px;
+                                        border-radius: 4px;
+                                        font-size: 0.8em;
+                                        white-space: nowrap;
+                                        overflow: hidden;
+                                        text-overflow: ellipsis;
+                                    " title="{p['platform']} - {p['topic']}">
+                                        {ICONS.get(p['platform'],'')} {p['topic']}
+                                    </div>
+                                """, unsafe_allow_html=True)
+
     else:
         # --- 列表模式 ---
         col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
@@ -515,7 +527,8 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+            # 欄位數量：12
+            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             
             for col, h in zip(col_list, headers):
@@ -572,7 +585,7 @@ with tab1:
                 })
 
                 with st.container():
-                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     if is_today:
                         cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
@@ -664,6 +677,7 @@ with tab2:
     published_posts = [p for p in filtered_posts]
     target_posts = published_posts
     
+    # 修正：精確判斷內容類型
     if ad_filter_val == "💰 廣告成效 (僅廣告/門市廣告)":
         target_posts = [p for p in target_posts if p['postPurpose'] in AD_PURPOSE_LIST]
     elif ad_filter_val == "💬 非廣告成效 (排除廣告)":
