@@ -128,7 +128,7 @@ if 'standards' not in st.session_state:
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
 
-# --- 4. 自訂 CSS (更新：白色背景) ---
+# --- 4. 自訂 CSS (白色背景) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -176,10 +176,8 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # --- 新增/編輯區塊 (修改：移除 st.form 以支援動態選單) ---
+    # --- 新增/編輯區塊 ---
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
-        # 注意：這裡移除了 with st.form(...)，讓互動能即時觸發
-        
         is_edit = st.session_state.editing_post is not None
         post_data = st.session_state.editing_post if is_edit else {}
         
@@ -197,14 +195,12 @@ with tab1:
         f_topic = c3.text_input("主題", value=post_data.get('topic', ''))
 
         c4, c5, c6 = st.columns(3)
-        # 這裡會觸發 Rerun，讓下面的 disabled 參數生效
         f_type = c4.selectbox("貼文類型", MAIN_POST_TYPES, index=MAIN_POST_TYPES.index(post_data.get('postType', '喜餅')) if post_data else 0)
         
         sub_index = 0
         if is_edit and post_data.get('postSubType') in SOUVENIR_SUB_TYPES:
             sub_index = SOUVENIR_SUB_TYPES.index(post_data['postSubType']) + 1
             
-        # 根據上面的 f_type 決定是否 disabled
         f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), index=sub_index)
         
         f_status = c6.selectbox("狀態", ["draft", "planned", "published"], 
@@ -249,7 +245,6 @@ with tab1:
             metrics_input['metrics1m']['comments'] = c_sub3.number_input("1月-留言", value=get_m('comments', 'metrics1m'), step=1)
             metrics_input['metrics1m']['shares'] = c_sub4.number_input("1月-分享", value=get_m('shares', 'metrics1m'), step=1)
 
-        # 改用普通的 button
         submitted = st.button("💾 儲存貼文", type="primary", use_container_width=True)
 
         if submitted:
@@ -345,6 +340,8 @@ with tab1:
         status_map = {'draft': '🌱 草稿', 'planned': '⏰ 已排程', 'published': '🚀 已發布'}
         today = datetime.now().date()
 
+        display_data = []
+
         for p in filtered_posts:
             # 準備數據
             raw_p = p
@@ -373,6 +370,26 @@ with tab1:
 
             rate7, overdue7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
             rate30, overdue30, r30, e30 = calc_rate_and_check_due(p.get('metrics1m', {}), 30)
+
+            # 收集 CSV 數據 (在渲染前先準備好)
+            display_data.append({
+                'ID': p['id'],
+                '日期': p['date'],
+                '平台': p['platform'],
+                '主題': p['topic'],
+                '類型': p['postType'],
+                '子類型': p.get('postSubType', ''),
+                '目的': p['postPurpose'],
+                '形式': p['postFormat'],
+                '狀態': status_map.get(p['status'], p['status']),
+                'KPI': label,
+                '7日互動率': rate7,
+                '30日互動率': rate30,
+                '7日觸及': r7, '7日互動': e7,
+                '30日觸及': r30, '30日互動': e30,
+                '負責人': p['postOwner'],
+                '_raw': p 
+            })
 
             # 顯示 Row
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
@@ -418,12 +435,11 @@ with tab1:
 
             st.markdown("<hr style='margin: 0; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
 
-        # 匯出邏輯
+        # 匯出邏輯 (修復 Bug：確保在迴圈內收集的 display_data 正確使用)
         if display_data:
             df = pd.DataFrame(display_data)
             if not df.empty:
                 export_df = df.drop(columns=['_raw', 'ID'], errors='ignore')
-                export_df.rename(columns={'7日率': '7日互動率', '30日率': '30日互動率'}, inplace=True)
                 csv = export_df.to_csv(index=False).encode('utf-8-sig')
                 st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
     else:
