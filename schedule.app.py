@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效管家",
+    page_title="社群排程與成效",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
