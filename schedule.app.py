@@ -115,7 +115,6 @@ def get_performance_label(platform, metrics, fmt, standards):
         if reach >= std['reach'] and rate >= std['rate']: return "✅ 達標", "green"
         return "🔴 未達標", "red"
     elif platform == 'Threads':
-        # Threads 只看數值，不看互動率
         if reach >= std['reach']: return "🔥 超標竿", "purple"
         return "-", "gray"
     
@@ -212,9 +211,6 @@ with tab1:
             
         f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), index=sub_index)
         
-        # 移除狀態選擇，預設為 'published'
-        # 保留一個隱藏的邏輯處理
-        
         c7, c8 = st.columns(2)
         f_purpose = c7.selectbox("目的", POST_PURPOSES, index=POST_PURPOSES.index(post_data.get('postPurpose', '互動')) if post_data else 0)
         f_format = c8.selectbox("形式", POST_FORMATS, index=POST_FORMATS.index(post_data.get('postFormat', '單圖')) if post_data else 0)
@@ -229,20 +225,11 @@ with tab1:
         due_date_7d = f_date + timedelta(days=7)
         due_date_1m = f_date + timedelta(days=30)
         
-        # 判斷是否需要顯示成效填寫欄位 (LINE@, 限動, 留言處 不顯示)
-        # 這裡檢查的是編輯時的單一平台，或是新增時的第一個平台(稍微不精準但UI限制)
-        # 建議如果是新增多平台，先顯示，實際儲存時再根據平台特性清空數據
-        
-        # 我們使用目前選到的平台(如果是編輯)或預設(Facebook)來判斷UI標籤
         current_platform = selected_platforms[0] if selected_platforms else 'Facebook'
-        
-        # 邏輯：如果 平台是LINE@ 或 形式是限動/留言處，則隱藏輸入框
         hide_metrics = is_metrics_disabled(current_platform, f_format)
         
         if not hide_metrics:
             st.caption("數據填寫")
-            
-            # Threads 標籤調整
             reach_label = "瀏覽數" if current_platform == 'Threads' else "觸及數"
             
             def get_m(key, period):
@@ -286,7 +273,7 @@ with tab1:
                     'projectOwner': f_po,
                     'postOwner': f_owner,
                     'designer': f_designer,
-                    'status': 'published', # 強制設定為已發布
+                    'status': 'published',
                     'metrics7d': metrics_input['metrics7d'],
                     'metrics1m': metrics_input['metrics1m']
                 }
@@ -301,7 +288,6 @@ with tab1:
                 else:
                     for p in selected_platforms:
                         new_post = {**new_base, 'id': str(uuid.uuid4()), 'platform': p}
-                        # 再次檢查：如果該平台不需要填寫成效，清空數據
                         if is_metrics_disabled(p, f_format):
                             new_post['metrics7d'] = {}
                             new_post['metrics1m'] = {}
@@ -341,7 +327,6 @@ with tab1:
 
     col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
     with col_sort1:
-        # 移除狀態排序，因為現在預設只有 published
         sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型"], index=0)
     with col_sort2:
         sort_order = st.selectbox("順序", ["降序 (新->舊)", "升序 (舊->新)"], index=0)
@@ -357,8 +342,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
-        # 移除狀態欄位
+        # 修改：增加 columns 數量到 12 (0-11)，對應表頭與操作
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -373,28 +358,24 @@ with tab1:
         for p in filtered_posts:
             raw_p = p
             label, color = get_performance_label(raw_p['platform'], raw_p.get('metrics7d'), raw_p['postFormat'], st.session_state.standards)
-            
-            # 判斷是否為當日
             is_today = (p['date'] == today_str)
 
             def calc_rate_and_check_due(metrics, days_offset):
                 eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
                 reach = safe_num(metrics.get('reach', 0))
                 
-                # 計算互動率 (Threads 不計算)
                 rate_str = "-"
+                # Threads 不計算互動率
                 if p['platform'] == 'Threads':
                     rate_str = "-"
                 elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
                     rate_str = f"{(eng/reach*100):.1f}%"
                 
-                # 檢查是否逾期未填 (包含當天)
                 post_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
                 due_date = post_date + timedelta(days=days_offset)
                 is_due = False
                 
                 if not is_metrics_disabled(p['platform'], p['postFormat']):
-                    # 邏輯：今天日期 >= 應填日期 (亦即到了該填的那天或過了)，且數據為0
                     if today_date_obj >= due_date and reach == 0:
                         is_due = True
                 
@@ -421,9 +402,9 @@ with tab1:
                 '_raw': p 
             })
 
-            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+            # 修改：使用 12 個 columns 變數 (0-11)
+            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
             
-            # 日期欄位 (當日醒目提示)
             if is_today:
                 cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
             else:
@@ -434,16 +415,13 @@ with tab1:
             cols[3].write(f"{p['postType']}")
             cols[4].write(p['postPurpose']) 
             cols[5].write(p['postFormat']) 
-            # 狀態欄已移除
             cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
             
-            # 7日互動率
             if overdue7:
                 cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
             else:
                 cols[7].write(rate7)
 
-            # 30日互動率
             if overdue30:
                 cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
             else:
@@ -451,18 +429,18 @@ with tab1:
                 
             cols[9].write(f"{p['postOwner']}")
 
+            # Edit Button (Index 10)
             if cols[10].button("✏️", key=f"edit_{p['id']}"):
                 st.session_state.editing_post = p
                 st.rerun()
+            # Delete Button (Index 11)
             if cols[11].button("🗑️", key=f"del_{p['id']}"):
                 st.session_state.posts = [item for item in st.session_state.posts if item['id'] != p['id']]
                 save_data(st.session_state.posts)
                 st.rerun()
 
             with st.expander(f"📉 {p['topic']} - 詳細數據 (點擊展開)"):
-                # 調整顯示標籤，如果是 Threads 顯示「瀏覽」
                 r_label = "瀏覽" if p['platform'] == 'Threads' else "觸及"
-                
                 d_c1, d_c2, d_c3, d_c4 = st.columns(4)
                 d_c1.metric(f"7天-{r_label}", f"{r7:,}")
                 d_c2.metric("7天-互動", f"{e7:,}")
@@ -507,9 +485,7 @@ with tab2:
             save_standards(std)
             st.success("KPI 設定已更新！")
 
-    # --- 數據分析 - 統一控制台 ---
     st.markdown("### 📊 成效分析設定")
-    
     ctrl1, ctrl2, ctrl3 = st.columns(3)
     period = ctrl1.selectbox("1. 分析基準 (時間)", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天成效" if x == "metrics7d" else "🌳 一個月成效")
     ad_filter = ctrl2.selectbox("2. 內容類型", ["全部", "💰 廣告成效 (僅廣告/門市廣告)", "💬 非廣告成效 (排除廣告)"])
@@ -517,8 +493,7 @@ with tab2:
 
     st.markdown("---")
 
-    # --- 數據計算邏輯 ---
-    published_posts = [p for p in filtered_posts] # 這裡原本過濾 status='published'，但現在預設都是，所以直接用
+    published_posts = [p for p in filtered_posts]
     target_posts = published_posts
     
     if "廣告成效" in ad_filter:
@@ -573,7 +548,6 @@ with tab2:
         
         c, r, e, rt = calc_stats_subset(posts_pf, period)
         
-        # Threads 互動率特別處理
         rt_display = f"{rt:.2f}%"
         if pf == 'Threads':
             rt_display = "-"
@@ -601,7 +575,6 @@ with tab2:
 
     st.divider()
 
-    # --- 貼文類型分佈 (交叉分析版) ---
     st.markdown("### 🍰 貼文類型分佈 (各平台)")
 
     view_type = st.radio("顯示模式", ["📄 表格模式", "📊 圖表模式"], horizontal=True)
