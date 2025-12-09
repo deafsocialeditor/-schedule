@@ -320,3 +320,227 @@ with tab1:
         status_map = {'draft': '🌱 草稿', 'planned': '⏰ 已排程', 'published': '🚀 已發布'}
 
         for p in filtered_posts:
+            perf_label, perf_color = get_performance_label(p['platform'], p.get('metrics7d', {}), p['postFormat'], st.session_state.standards)
+            m7 = p.get('metrics7d', {})
+            eng7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
+            reach7 = safe_num(m7.get('reach', 0))
+            rate7 = f"{(eng7/reach7*100):.1f}%" if reach7 > 0 and not is_metrics_disabled(p['platform'], p['postFormat']) else "-"
+
+            display_data.append({
+                'ID': p['id'],
+                '日期': p['date'],
+                '平台': f"{ICONS.get(p['platform'], '')} {p['platform']}",
+                '主題': p['topic'],
+                '類型': f"{p['postType']}-{p['postSubType']}" if p['postSubType'] else p['postType'],
+                '形式': p['postFormat'],
+                '負責人': f"{p['postOwner']} (D:{p['designer']})",
+                '狀態': status_map.get(p['status'], p['status']),
+                'KPI': perf_label,
+                '7天觸及': int(reach7),
+                '7天互動': int(eng7),
+                '7天率': rate7,
+                '_raw': p 
+            })
+        
+        df = pd.DataFrame(display_data)
+        col_list = st.columns([0.8, 0.8, 2, 1, 1, 1, 1, 0.8, 0.8, 0.5, 0.5])
+        headers = ["日期", "平台", "主題", "類型", "負責人", "狀態", "KPI", "觸及(7d)", "互動(7d)", "編輯", "刪除"]
+        for col, h in zip(col_list, headers):
+            col.markdown(f"**{h}**")
+        st.markdown("<hr style='margin: 0.5em 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
+
+        for index, row in df.iterrows():
+            cols = st.columns([0.8, 0.8, 2, 1, 1, 1, 1, 0.8, 0.8, 0.5, 0.5])
+            cols[0].write(row['日期'])
+            cols[1].write(row['平台'])
+            cols[2].write(row['主題'])
+            cols[3].write(row['類型'])
+            cols[4].write(row['負責人'])
+            cols[5].write(row['狀態'])
+            raw_p = row['_raw']
+            label, color = get_performance_label(raw_p['platform'], raw_p.get('metrics7d'), raw_p['postFormat'], st.session_state.standards)
+            cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
+            cols[7].write(f"{row['7天觸及']:,}")
+            cols[8].write(f"{row['7天互動']:,}")
+            if cols[9].button("✏️", key=f"edit_{row['ID']}"):
+                st.session_state.editing_post = row['_raw']
+                st.rerun()
+            if cols[10].button("🗑️", key=f"del_{row['ID']}"):
+                st.session_state.posts = [p for p in st.session_state.posts if p['id'] != row['ID']]
+                save_data(st.session_state.posts)
+                st.rerun()
+            st.markdown("<hr style='margin: 0; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
+
+        csv = df.drop(columns=['_raw', 'ID']).to_csv(index=False).encode('utf-8-sig')
+        st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
+    else:
+        st.info("目前沒有符合條件的排程資料。")
+
+# === TAB 2: 數據分析 (更新重點) ===
+with tab2:
+    with st.expander("⚙️ KPI 標準設定"):
+        std = st.session_state.standards
+        c_fb, c_ig, c_others = st.columns(3)
+        with c_fb:
+            st.subheader("Facebook")
+            for level in ['high', 'std', 'low']:
+                l_name = {'high': '🏆 高標', 'std': '✅ 標準', 'low': '🤏 低標'}[level]
+                st.caption(l_name)
+                c_1, c_2 = st.columns(2)
+                std['Facebook'][level]['reach'] = c_1.number_input(f"FB {level} 觸及", value=std['Facebook'][level]['reach'])
+                std['Facebook'][level]['rate'] = c_2.number_input(f"FB {level} 率(%)", value=std['Facebook'][level]['rate'])
+        with c_ig:
+            st.subheader("Instagram")
+            std['Instagram']['reach'] = st.number_input("IG 觸及目標", value=std['Instagram']['reach'])
+            std['Instagram']['engagement'] = st.number_input("IG 互動數目標", value=std['Instagram']['engagement'])
+            std['Instagram']['rate'] = st.number_input("IG 互動率目標(%)", value=std['Instagram']['rate'])
+        with c_others:
+            st.subheader("其他")
+            std['YouTube']['reach'] = st.number_input("YT 觸及", value=std['YouTube']['reach'])
+            std['Threads']['reach'] = st.number_input("Threads 瀏覽標竿", value=std['Threads']['reach'])
+        if st.button("儲存設定"):
+            st.session_state.standards = std
+            save_standards(std)
+            st.success("KPI 設定已更新！")
+
+    # --- 數據概覽 (分為總體 / 廣告 / 非廣告) ---
+    published_posts = [p for p in filtered_posts if p['status'] == 'published']
+    period = st.radio("分析基準", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天成效" if x == "metrics7d" else "🌳 一個月成效", horizontal=True)
+    
+    # 定義輔助計算函數
+    def calc_stats_subset(posts_subset, p_period):
+        count = len(posts_subset)
+        reach = 0
+        engage = 0
+        for p in posts_subset:
+            if is_metrics_disabled(p['platform'], p['postFormat']): continue
+            m = p.get(p_period, {})
+            # 依據原有邏輯：Threads/LINE@ 不計入觸及加總，LINE@ 不計入互動加總
+            if p['platform'] not in ['Threads', 'LINE@']:
+                reach += safe_num(m.get('reach', 0))
+            if p['platform'] != 'LINE@':
+                engage += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
+        return count, reach, engage
+
+    # 分類貼文
+    ad_posts_all = [p for p in published_posts if p['postPurpose'] in AD_PURPOSE_LIST]
+    non_ad_posts_all = [p for p in published_posts if p['postPurpose'] not in AD_PURPOSE_LIST]
+
+    # 計算三大類數據
+    t_c, t_r, t_e = calc_stats_subset(published_posts, period)
+    a_c, a_r, a_e = calc_stats_subset(ad_posts_all, period)
+    n_c, n_r, n_e = calc_stats_subset(non_ad_posts_all, period)
+
+    st.markdown("### 📊 總體成效概覽")
+    
+    # 三欄式概覽
+    ov1, ov2, ov3 = st.columns(3)
+    
+    with ov1:
+        st.markdown("""<div style="background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0;">
+        <h3 style="margin:0; color:#334155;">🔵 總體成效</h3>
+        </div>""", unsafe_allow_html=True)
+        st.metric("總篇數", t_c)
+        st.metric("總觸及", f"{int(t_r):,}")
+        st.metric("總互動", f"{int(t_e):,}")
+
+    with ov2:
+        st.markdown("""<div style="background:#fffbeb; padding:15px; border-radius:10px; border:1px solid #fef3c7;">
+        <h3 style="margin:0; color:#b45309;">💰 廣告成效</h3>
+        <span style="font-size:0.8em; color:#92400e;">(廣告/門市廣告)</span>
+        </div>""", unsafe_allow_html=True)
+        st.metric("廣告篇數", a_c)
+        st.metric("廣告觸及", f"{int(a_r):,}")
+        st.metric("廣告互動", f"{int(a_e):,}")
+
+    with ov3:
+        st.markdown("""<div style="background:#f0fdf4; padding:15px; border-radius:10px; border:1px solid #dcfce7;">
+        <h3 style="margin:0; color:#15803d;">💬 非廣告成效</h3>
+        <span style="font-size:0.8em; color:#166534;">(互動/導購/公告等)</span>
+        </div>""", unsafe_allow_html=True)
+        st.metric("非廣篇數", n_c)
+        st.metric("非廣觸及", f"{int(n_r):,}")
+        st.metric("非廣互動", f"{int(n_e):,}")
+
+    st.markdown("---")
+
+    # --- 平台詳細分析 (更新為 5 行模式) ---
+    st.markdown("### 📈 各平台成效詳細分析")
+
+    # 詳細計算函數 (不過濾平台特殊規則，單純加總以便顯示個別平台數據)
+    def calc_platform_stats(posts_subset, p_period):
+        count = len(posts_subset)
+        reach = 0
+        engage = 0
+        for p in posts_subset:
+            if is_metrics_disabled(p['platform'], p['postFormat']): continue
+            m = p.get(p_period, {})
+            reach += safe_num(m.get('reach', 0))
+            engage += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
+        rate = (engage / reach * 100) if reach > 0 else 0
+        return count, reach, engage, rate
+
+    for pf in PLATFORMS:
+        if filter_platform != "All" and filter_platform != pf:
+            continue
+            
+        posts_pf = [p for p in published_posts if p['platform'] == pf]
+        if not posts_pf: continue 
+            
+        st.subheader(f"{ICONS.get(pf, '')} {pf}")
+        
+        # 拆解五大維度
+        # 1. 總成效 (Base)
+        # 2. 廣告 (Purpose)
+        # 3. 非廣告 (Purpose)
+        # 4. 短影音 (Format)
+        # 5. 一般貼文 (Format)
+        
+        ad_posts = [p for p in posts_pf if p['postPurpose'] in AD_PURPOSE_LIST]
+        non_ad_posts = [p for p in posts_pf if p['postPurpose'] not in AD_PURPOSE_LIST]
+        short_posts = [p for p in posts_pf if p['postFormat'] == '短影音']
+        regular_posts = [p for p in posts_pf if p['postFormat'] != '短影音']
+        
+        # 計算
+        stats_map = [
+            ("🔵 總成效", posts_pf),
+            ("💰 廣告成效", ad_posts),
+            ("💬 非廣告成效", non_ad_posts),
+            ("🎬 短影音", short_posts),
+            ("🖼️ 一般貼文", regular_posts)
+        ]
+        
+        table_data = []
+        for label, subset in stats_map:
+            c, r, e, rt = calc_platform_stats(subset, period)
+            table_data.append({
+                "類別": label,
+                "篇數": c,
+                "總觸及": int(r),
+                "總互動": int(e),
+                "互動率": f"{rt:.2f}%"
+            })
+        
+        st.dataframe(
+            pd.DataFrame(table_data),
+            column_config={
+                "總觸及": st.column_config.NumberColumn(format="%d"),
+                "總互動": st.column_config.NumberColumn(format="%d"),
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+        st.divider()
+
+    # --- 類型分佈圖 ---
+    st.markdown("### 🍰 貼文類型分佈")
+    type_dist = {}
+    for p in published_posts:
+        t = p['postType']
+        type_dist[t] = type_dist.get(t, 0) + 1
+    
+    if type_dist:
+        dist_df = pd.DataFrame(list(type_dist.items()), columns=['類型', '數量']).set_index('類型')
+        st.bar_chart(dist_df)
+    else:
+        st.caption("無數據")
