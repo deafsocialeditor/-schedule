@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import os
 import uuid
+import calendar  # 修復：補回這個漏掉的 import
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
@@ -236,18 +237,26 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # --- 新增：自動滾動到頂部 (JavaScript) ---
+    # --- 新增：自動滾動到頂部 (JavaScript 強制版) ---
     if st.session_state.scroll_to_top:
         components.html(
             """
             <script>
                 // 嘗試滾動父層視窗
-                window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
+                try {
+                    window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
+                } catch (e) {
+                    try {
+                        window.parent.scrollTo(0, 0);
+                    } catch (e2) {
+                        console.log("Scroll attempt failed");
+                    }
+                }
             </script>
             """,
             height=0
         )
-        st.session_state.scroll_to_top = False 
+        st.session_state.scroll_to_top = False
 
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
@@ -502,7 +511,7 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            # 修改：columns 數量設定為 12 (包含刪除按鈕)
+            # columns 數量: 12
             col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
             
@@ -560,7 +569,6 @@ with tab1:
                 })
 
                 with st.container():
-                    # 修改：columns 數量設定為 12
                     cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     if is_today:
@@ -590,7 +598,6 @@ with tab1:
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
-                    # 第 12 欄 (Index 11) - 刪除按鈕
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
