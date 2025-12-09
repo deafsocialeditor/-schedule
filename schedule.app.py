@@ -432,7 +432,7 @@ with tab1:
     else:
         st.info("目前沒有符合條件的排程資料。")
 
-# === TAB 2: 數據分析 (架構調整：統一篩選控制) ===
+# === TAB 2: 數據分析 ===
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
@@ -462,38 +462,27 @@ with tab2:
     # --- 數據分析 - 統一控制台 ---
     st.markdown("### 📊 成效分析設定")
     
-    # 1. 第一層控制：時間與主要維度
     ctrl1, ctrl2, ctrl3 = st.columns(3)
     period = ctrl1.selectbox("1. 分析基準 (時間)", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天成效" if x == "metrics7d" else "🌳 一個月成效")
-    
-    # 2. 廣告過濾
     ad_filter = ctrl2.selectbox("2. 內容類型", ["全部", "💰 廣告成效 (僅廣告/門市廣告)", "💬 非廣告成效 (排除廣告)"])
-    
-    # 3. 影音過濾
     video_filter = ctrl3.selectbox("3. 形式過濾", ["全部", "🎬 短影音", "🖼️ 非短影音 (一般貼文)"])
 
     st.markdown("---")
 
     # --- 數據計算邏輯 ---
-    # 取得原始已發布貼文 (依然受左側篩選影響，確保日期範圍一致)
     published_posts = [p for p in filtered_posts if p['status'] == 'published']
-    
-    # 根據上方控制台進行二次篩選
     target_posts = published_posts
     
-    # 廣告篩選邏輯
     if "廣告成效" in ad_filter:
         target_posts = [p for p in target_posts if p['postPurpose'] in AD_PURPOSE_LIST]
     elif "非廣告成效" in ad_filter:
         target_posts = [p for p in target_posts if p['postPurpose'] not in AD_PURPOSE_LIST]
         
-    # 形式篩選邏輯
     if "短影音" in video_filter:
         target_posts = [p for p in target_posts if p['postFormat'] == '短影音']
     elif "非短影音" in video_filter:
         target_posts = [p for p in target_posts if p['postFormat'] != '短影音']
 
-    # 通用計算函數
     def calc_stats_subset(posts_subset, p_period):
         count = len(posts_subset)
         reach = 0
@@ -501,7 +490,6 @@ with tab2:
         for p in posts_subset:
             if is_metrics_disabled(p['platform'], p['postFormat']): continue
             m = p.get(p_period, {})
-            # Threads/Line 規則保持不變
             if p['platform'] not in ['Threads', 'LINE@']:
                 reach += safe_num(m.get('reach', 0))
             if p['platform'] != 'LINE@':
@@ -509,27 +497,21 @@ with tab2:
         rate = (engage / reach * 100) if reach > 0 else 0
         return count, reach, engage, rate
 
-    # 計算總體數據
     t_c, t_r, t_e, t_rt = calc_stats_subset(target_posts, period)
 
-    # --- 總體成效概覽 (顯示篩選後的結果) ---
     st.markdown("### 📈 總體成效概覽 (根據上方設定)")
     ov1, ov2, ov3, ov4 = st.columns(4)
     ov1.metric("篇數", t_c)
     ov1.caption("符合條件的貼文數")
-    
     ov2.metric("總觸及", f"{int(t_r):,}")
     ov2.caption("不含 Threads/LINE@")
-    
     ov3.metric("總互動", f"{int(t_e):,}")
     ov3.caption("不含 LINE@")
-    
     ov4.metric("平均互動率", f"{t_rt:.2f}%")
     ov4.caption("總互動 / 總觸及")
 
     st.markdown("---")
 
-    # --- 平台詳細分析 (根據上方設定) ---
     st.markdown("### 🏆 各平台成效詳細分析")
 
     platform_table_data = []
@@ -538,11 +520,9 @@ with tab2:
         if filter_platform != "All" and filter_platform != pf:
             continue
             
-        # 取得該平台符合條件的貼文
         posts_pf = [p for p in target_posts if p['platform'] == pf]
         if not posts_pf: continue
         
-        # 計算該平台數據
         c, r, e, rt = calc_stats_subset(posts_pf, period)
         
         platform_table_data.append({
@@ -568,15 +548,35 @@ with tab2:
 
     st.divider()
 
-    # --- 類型分佈圖 ---
-    st.markdown("### 🍰 貼文類型分佈")
-    type_dist = {}
-    for p in target_posts:
-        t = p['postType']
-        type_dist[t] = type_dist.get(t, 0) + 1
-    
-    if type_dist:
-        dist_df = pd.DataFrame(list(type_dist.items()), columns=['類型', '數量']).set_index('類型')
-        st.bar_chart(dist_df)
+    # --- 貼文類型分佈 (更新：交叉分析 + 切換模式) ---
+    st.markdown("### 🍰 貼文類型分佈 (各平台)")
+
+    # 檢視模式切換
+    view_type = st.radio("顯示模式", ["📄 表格模式", "📊 圖表模式"], horizontal=True)
+
+    if target_posts:
+        # 準備交叉分析數據
+        data_for_dist = []
+        for p in target_posts:
+            data_for_dist.append({'Platform': p['platform'], 'Type': p['postType']})
+        
+        df_dist = pd.DataFrame(data_for_dist)
+        
+        # 建立交叉表 (Rows: Platform, Cols: Type)
+        pivot_df = pd.crosstab(df_dist['Platform'], df_dist['Type'])
+        
+        # 嘗試依照自定義順序排序 (如果該平台有數據)
+        existing_platforms = [p for p in PLATFORMS if p in pivot_df.index]
+        pivot_df = pivot_df.reindex(existing_platforms)
+
+        if view_type == "📄 表格模式":
+            # 使用 heatmap 樣式顯示表格
+            st.dataframe(
+                pivot_df.style.background_gradient(cmap="Blues", axis=None), 
+                use_container_width=True
+            )
+        else:
+            # 顯示堆疊長條圖
+            st.bar_chart(pivot_df)
     else:
-        st.caption("無數據")
+        st.caption("無符合條件的貼文數據")
