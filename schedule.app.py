@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components # 新增這個 import
 import pandas as pd
 import json
 import os
@@ -25,7 +24,7 @@ SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
 
-# 專案負責人 (含門市)
+# 專案負責人
 PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
 POST_OWNERS = ['一千', '凱曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
@@ -128,10 +127,7 @@ def edit_post_callback(post):
     """點擊編輯按鈕時觸發"""
     st.session_state.editing_post = post
     
-    # 設定滾動標記
-    st.session_state.scroll_to_top = True
-    
-    # 預填表單 (使用 session state key)
+    # 預填表單
     try:
         st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
     except:
@@ -141,7 +137,6 @@ def edit_post_callback(post):
     st.session_state['entry_topic'] = post['topic']
     st.session_state['entry_type'] = post['postType']
     
-    # 子類型處理
     sub_val = post.get('postSubType', '')
     if sub_val in (["-- 無 --"] + SOUVENIR_SUB_TYPES):
         st.session_state['entry_subtype'] = sub_val
@@ -154,7 +149,6 @@ def edit_post_callback(post):
     st.session_state['entry_owner'] = post['postOwner']
     st.session_state['entry_designer'] = post['designer']
     
-    # Metrics
     m7 = post.get('metrics7d', {})
     st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0))
     st.session_state['entry_m7_likes'] = safe_num(m7.get('likes', 0))
@@ -178,8 +172,6 @@ if 'standards' not in st.session_state:
     st.session_state.standards = load_standards()
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
-if 'scroll_to_top' not in st.session_state:
-    st.session_state.scroll_to_top = False
 
 # --- 4. 自訂 CSS ---
 st.markdown("""
@@ -210,7 +202,6 @@ st.markdown("""
 # --- 5. 側邊欄篩選 ---
 with st.sidebar:
     st.title("🔎 篩選條件")
-    
     filter_platform = st.selectbox("平台", ["All"] + PLATFORMS, index=0)
     filter_post_type = st.selectbox("貼文類型", ["All"] + MAIN_POST_TYPES, index=0)
     filter_purpose = st.selectbox("目的", ["All"] + POST_PURPOSES, index=0)
@@ -237,25 +228,11 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # --- JS Scroll Logic ---
-    # 如果標記為 True，注入 JavaScript 滾動到頂部，然後重置標記
-    if st.session_state.scroll_to_top:
-        components.html(
-            """
-                <script>
-                    window.parent.document.querySelector('section.main').scrollTo(0, 0);
-                </script>
-            """,
-            height=0
-        )
-        st.session_state.scroll_to_top = False
-
-    # --- 新增/編輯區塊 ---
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
         
-        # === 狀態初始化 ===
+        # 狀態初始化
         if 'entry_date' not in st.session_state: st.session_state['entry_date'] = datetime.now()
         if 'entry_platform_single' not in st.session_state: st.session_state['entry_platform_single'] = PLATFORMS[0]
         if 'entry_platform_multi' not in st.session_state: st.session_state['entry_platform_multi'] = ['Facebook']
@@ -355,7 +332,6 @@ with tab1:
                 if is_edit:
                     p = selected_platforms[0]
                     final_purpose = platform_purposes[p]
-                    
                     new_base = {
                         'date': f_date.strftime("%Y-%m-%d"),
                         'topic': f_topic,
@@ -453,7 +429,7 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -473,6 +449,7 @@ with tab1:
             def calc_rate_and_check_due(metrics, days_offset):
                 eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
                 reach = safe_num(metrics.get('reach', 0))
+                
                 rate_str = "-"
                 if p['platform'] == 'Threads':
                     rate_str = "-"
@@ -486,6 +463,7 @@ with tab1:
                 if not is_metrics_disabled(p['platform'], p['postFormat']):
                     if today_date_obj >= due_date and reach == 0:
                         is_due = True
+                
                 return rate_str, is_due, int(reach), int(eng)
 
             rate7, overdue7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
@@ -510,7 +488,7 @@ with tab1:
             })
 
             with st.container():
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
@@ -594,22 +572,22 @@ with tab2:
     st.markdown("### 📊 成效分析設定")
     ctrl1, ctrl2, ctrl3 = st.columns(3)
     period = ctrl1.selectbox("1. 分析基準 (時間)", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天成效" if x == "metrics7d" else "🌳 一個月成效")
-    ad_filter = ctrl2.selectbox("2. 內容類型", ["全部", "💰 廣告成效 (僅廣告/門市廣告)", "💬 非廣告成效 (排除廣告)"])
-    video_filter = ctrl3.selectbox("3. 形式過濾", ["全部", "🎬 短影音", "🖼️ 非短影音 (一般貼文)"])
+    ad_filter_val = ctrl2.selectbox("2. 內容類型", ["全部", "💰 廣告成效 (僅廣告/門市廣告)", "💬 非廣告成效 (排除廣告)"])
+    video_filter_val = ctrl3.selectbox("3. 形式過濾", ["全部", "🎬 短影音", "🖼️ 非短影音 (一般貼文)"])
 
     st.markdown("---")
 
     published_posts = [p for p in filtered_posts]
     target_posts = published_posts
     
-    if "廣告成效" in ad_filter:
+    if ad_filter_val == "💰 廣告成效 (僅廣告/門市廣告)":
         target_posts = [p for p in target_posts if p['postPurpose'] in AD_PURPOSE_LIST]
-    elif "非廣告成效" in ad_filter:
+    elif ad_filter_val == "💬 非廣告成效 (排除廣告)":
         target_posts = [p for p in target_posts if p['postPurpose'] not in AD_PURPOSE_LIST]
         
-    if "短影音" in video_filter:
+    if video_filter_val == "🎬 短影音":
         target_posts = [p for p in target_posts if p['postFormat'] == '短影音']
-    elif "非短影音" in video_filter:
+    elif video_filter_val == "🖼️ 非短影音 (一般貼文)":
         target_posts = [p for p in target_posts if p['postFormat'] != '短影音']
 
     def calc_stats_subset(posts_subset, p_period):
