@@ -23,7 +23,9 @@ MAIN_POST_TYPES = ['喜餅', '彌月', '伴手禮', '社群互動', '圓夢計�
 SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
-PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷']
+
+# 修改：專案負責人新增「門市」
+PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
 POST_OWNERS = ['一千', '凱曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
 
@@ -128,7 +130,7 @@ if 'standards' not in st.session_state:
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
 
-# --- 4. 自訂 CSS (白色背景 + 今日高亮樣式) ---
+# --- 4. 自訂 CSS ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -141,14 +143,13 @@ st.markdown("""
     .gray { background-color: #f3f4f6; color: #9ca3af; }
     .overdue-alert { color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }
     
-    /* 今日高亮標籤樣式 */
     .today-highlight {
-        background-color: #fef9c3; /* 亮黃色背景 */
-        color: #b45309; /* 深橘色文字 */
+        background-color: #fef9c3;
+        color: #b45309;
         padding: 5px 10px;
         border-radius: 8px;
         font-weight: 900;
-        border: 2px solid #fcd34d; /* 黃色邊框 */
+        border: 2px solid #fcd34d;
         display: inline-block;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
@@ -161,11 +162,8 @@ with st.sidebar:
     
     filter_platform = st.selectbox("平台", ["All"] + PLATFORMS, index=0)
     filter_post_type = st.selectbox("貼文類型", ["All"] + MAIN_POST_TYPES, index=0)
-    
-    # 新增目的與形式篩選
     filter_purpose = st.selectbox("目的", ["All"] + POST_PURPOSES, index=0)
     filter_format = st.selectbox("形式", ["All"] + POST_FORMATS, index=0)
-    
     filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)")
     
     st.divider()
@@ -193,31 +191,33 @@ with tab1:
         is_edit = st.session_state.editing_post is not None
         post_data = st.session_state.editing_post if is_edit else {}
         
+        # 為了實現「儲存後清空」，我們為每個 widget 加上唯一的 key
+        # key 命名規則: entry_{欄位名}
+        
         c1, c2, c3 = st.columns([1, 2, 1])
         f_date = c1.date_input("發布日期", 
                                datetime.strptime(post_data.get('date', datetime.now().strftime("%Y-%m-%d")), "%Y-%m-%d") 
-                               if post_data else datetime.now())
+                               if post_data else datetime.now(), key="entry_date")
         
         if is_edit:
-            f_platform = c2.selectbox("平台 (編輯模式僅單選)", PLATFORMS, index=PLATFORMS.index(post_data['platform']))
+            f_platform = c2.selectbox("平台 (編輯模式僅單選)", PLATFORMS, index=PLATFORMS.index(post_data['platform']), key="entry_platform_single")
             selected_platforms = [f_platform]
         else:
-            selected_platforms = c2.multiselect("平台 (可複選)", PLATFORMS, default=['Facebook'])
+            selected_platforms = c2.multiselect("平台 (可複選)", PLATFORMS, default=['Facebook'], key="entry_platform_multi")
             
-        f_topic = c3.text_input("主題", value=post_data.get('topic', ''))
+        f_topic = c3.text_input("主題", value=post_data.get('topic', ''), key="entry_topic")
 
         c4, c5, c6 = st.columns(3)
-        f_type = c4.selectbox("貼文類型", MAIN_POST_TYPES, index=MAIN_POST_TYPES.index(post_data.get('postType', '喜餅')) if post_data else 0)
+        f_type = c4.selectbox("貼文類型", MAIN_POST_TYPES, index=MAIN_POST_TYPES.index(post_data.get('postType', '喜餅')) if post_data else 0, key="entry_type")
         
         sub_index = 0
         if is_edit and post_data.get('postSubType') in SOUVENIR_SUB_TYPES:
             sub_index = SOUVENIR_SUB_TYPES.index(post_data['postSubType']) + 1
             
-        f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), index=sub_index)
+        f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), index=sub_index, key="entry_subtype")
         
         c7, c8 = st.columns(2)
         
-        # --- 目的欄位 (複選平台時個別設定) ---
         platform_purposes = {} 
         
         with c7:
@@ -227,21 +227,21 @@ with tab1:
                     platform_purposes[p] = st.selectbox(
                         f"{ICONS.get(p, '')} {p}", 
                         POST_PURPOSES, 
-                        key=f"purpose_for_{p}",
+                        key=f"purpose_for_{p}", # 這些也是需要清空的 key
                         index=POST_PURPOSES.index('互動')
                     )
             else:
                 default_index = POST_PURPOSES.index(post_data.get('postPurpose', '互動')) if post_data else 0
-                single_purpose = st.selectbox("目的", POST_PURPOSES, index=default_index)
+                single_purpose = st.selectbox("目的", POST_PURPOSES, index=default_index, key="entry_purpose")
                 for p in selected_platforms:
                     platform_purposes[p] = single_purpose
 
-        f_format = c8.selectbox("形式", POST_FORMATS, index=POST_FORMATS.index(post_data.get('postFormat', '單圖')) if post_data else 0)
+        f_format = c8.selectbox("形式", POST_FORMATS, index=POST_FORMATS.index(post_data.get('postFormat', '單圖')) if post_data else 0, key="entry_format")
 
         c9, c10, c11 = st.columns(3)
-        f_po = c9.selectbox("專案負責人", [""] + PROJECT_OWNERS, index=(PROJECT_OWNERS.index(post_data['projectOwner']) + 1) if post_data and post_data['projectOwner'] else 0)
-        f_owner = c10.selectbox("貼文負責人", POST_OWNERS, index=POST_OWNERS.index(post_data.get('postOwner', '一千')) if post_data else 0)
-        f_designer = c11.selectbox("美編", [""] + DESIGNERS, index=(DESIGNERS.index(post_data['designer']) + 1) if post_data and post_data['designer'] else 0)
+        f_po = c9.selectbox("專案負責人", [""] + PROJECT_OWNERS, index=(PROJECT_OWNERS.index(post_data['projectOwner']) + 1) if post_data and post_data['projectOwner'] else 0, key="entry_po")
+        f_owner = c10.selectbox("貼文負責人", POST_OWNERS, index=POST_OWNERS.index(post_data.get('postOwner', '一千')) if post_data else 0, key="entry_owner")
+        f_designer = c11.selectbox("美編", [""] + DESIGNERS, index=(DESIGNERS.index(post_data['designer']) + 1) if post_data and post_data['designer'] else 0, key="entry_designer")
 
         st.divider()
         
@@ -251,35 +251,34 @@ with tab1:
         current_platform = selected_platforms[0] if selected_platforms else 'Facebook'
         hide_metrics = is_metrics_disabled(current_platform, f_format)
         
+        metrics_input = {'metrics7d': {}, 'metrics1m': {}}
+
         if not hide_metrics:
             st.caption("數據填寫")
-            
             reach_label = "瀏覽數" if current_platform == 'Threads' else "觸及數"
             
             def get_m(key, period):
                 return post_data.get(period, {}).get(key, 0) if post_data else 0
 
             m_cols = st.columns(2)
-            metrics_input = {'metrics7d': {}, 'metrics1m': {}}
             
             with m_cols[0]:
                 st.markdown(f"##### 🔥 7天成效 <span style='font-size:0.7em; color:#ef4444; background:#fee2e2; padding:2px 6px; border-radius:4px;'>預計: {due_date_7d.strftime('%m/%d')}</span>", unsafe_allow_html=True)
-                metrics_input['metrics7d']['reach'] = st.number_input(f"7天-{reach_label}", value=get_m('reach', 'metrics7d'), step=1)
-                metrics_input['metrics7d']['likes'] = st.number_input("7天-按讚", value=get_m('likes', 'metrics7d'), step=1)
+                metrics_input['metrics7d']['reach'] = st.number_input(f"7天-{reach_label}", value=get_m('reach', 'metrics7d'), step=1, key="entry_m7_reach")
+                metrics_input['metrics7d']['likes'] = st.number_input("7天-按讚", value=get_m('likes', 'metrics7d'), step=1, key="entry_m7_likes")
                 c_sub1, c_sub2 = st.columns(2)
-                metrics_input['metrics7d']['comments'] = c_sub1.number_input("7天-留言", value=get_m('comments', 'metrics7d'), step=1)
-                metrics_input['metrics7d']['shares'] = c_sub2.number_input("7天-分享", value=get_m('shares', 'metrics7d'), step=1)
+                metrics_input['metrics7d']['comments'] = c_sub1.number_input("7天-留言", value=get_m('comments', 'metrics7d'), step=1, key="entry_m7_comments")
+                metrics_input['metrics7d']['shares'] = c_sub2.number_input("7天-分享", value=get_m('shares', 'metrics7d'), step=1, key="entry_m7_shares")
 
             with m_cols[1]:
                 st.markdown(f"##### 🌳 一個月成效 <span style='font-size:0.7em; color:#a855f7; background:#f3e8ff; padding:2px 6px; border-radius:4px;'>預計: {due_date_1m.strftime('%m/%d')}</span>", unsafe_allow_html=True)
-                metrics_input['metrics1m']['reach'] = st.number_input(f"1月-{reach_label}", value=get_m('reach', 'metrics1m'), step=1)
-                metrics_input['metrics1m']['likes'] = st.number_input("1月-按讚", value=get_m('likes', 'metrics1m'), step=1)
+                metrics_input['metrics1m']['reach'] = st.number_input(f"1月-{reach_label}", value=get_m('reach', 'metrics1m'), step=1, key="entry_m1_reach")
+                metrics_input['metrics1m']['likes'] = st.number_input("1月-按讚", value=get_m('likes', 'metrics1m'), step=1, key="entry_m1_likes")
                 c_sub3, c_sub4 = st.columns(2)
-                metrics_input['metrics1m']['comments'] = c_sub3.number_input("1月-留言", value=get_m('comments', 'metrics1m'), step=1)
-                metrics_input['metrics1m']['shares'] = c_sub4.number_input("1月-分享", value=get_m('shares', 'metrics1m'), step=1)
+                metrics_input['metrics1m']['comments'] = c_sub3.number_input("1月-留言", value=get_m('comments', 'metrics1m'), step=1, key="entry_m1_comments")
+                metrics_input['metrics1m']['shares'] = c_sub4.number_input("1月-分享", value=get_m('shares', 'metrics1m'), step=1, key="entry_m1_shares")
         else:
             st.info(f"ℹ️ {current_platform} / {f_format} 不需要填寫成效數據")
-            metrics_input = {'metrics7d': {}, 'metrics1m': {}}
 
         submitted = st.button("💾 儲存貼文 (預設已發布)", type="primary", use_container_width=True)
 
@@ -341,6 +340,14 @@ with tab1:
                     st.success(f"已新增 {len(selected_platforms)} 則貼文！")
                 
                 save_data(st.session_state.posts)
+                
+                # --- 清空欄位邏輯 ---
+                # 刪除所有以 'entry_' 或 'purpose_for_' 開頭的 session_state key
+                # 這會強制 Streamlit 在 rerun 時使用 widget 的預設值（通常是空或第一項）重繪
+                keys_to_clear = [key for key in st.session_state.keys() if key.startswith("entry_") or key.startswith("purpose_for_")]
+                for key in keys_to_clear:
+                    del st.session_state[key]
+                
                 st.rerun()
 
         if st.session_state.editing_post:
@@ -388,8 +395,7 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        # 修改：columns 數量設定為 12 (0.8 + 0.7 + 1.8 + 0.7 + 0.6 + 0.6 + 0.6 + 0.6 + 0.6 + 0.6 + 0.4 + 0.4)
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -411,7 +417,6 @@ with tab1:
                 reach = safe_num(metrics.get('reach', 0))
                 
                 rate_str = "-"
-                # Threads 不計算互動率
                 if p['platform'] == 'Threads':
                     rate_str = "-"
                 elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
@@ -448,10 +453,8 @@ with tab1:
                 '_raw': p 
             })
 
-            # 使用標準 container
             with st.container():
-                # 欄位定義 (12欄)
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
