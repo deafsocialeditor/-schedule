@@ -128,10 +128,10 @@ if 'standards' not in st.session_state:
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
 
-# --- 4. 自訂 CSS ---
+# --- 4. 自訂 CSS (更新：白色背景) ---
 st.markdown("""
     <style>
-    .stApp { background-color: #fff0f5; }
+    .stApp { background-color: #ffffff; }
     div[data-testid="stMetricValue"] { font-size: 24px; color: #4b5563; }
     .kpi-badge { padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
     .purple { background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }
@@ -143,7 +143,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- 5. 側邊欄篩選 (更新：新增目的與形式) ---
+# --- 5. 側邊欄篩選 ---
 with st.sidebar:
     st.title("🔎 篩選條件")
     
@@ -329,9 +329,9 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        # 表頭 (更新：新增目的、形式、互動率欄位)
+        # 表頭 (更新：名詞調整)
         col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
-        headers = ["日期", "平台", "主題", "類型", "目的", "形式", "狀態", "KPI", "7日率", "30日率", "負責人", "編", "刪"]
+        headers = ["日期", "平台", "主題", "類型", "目的", "形式", "狀態", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
             col.markdown(f"**{h}**")
@@ -355,7 +355,7 @@ with tab1:
                 if reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
                     rate_str = f"{(eng/reach*100):.1f}%"
                 
-                # 檢查是否逾期未填 (已發布 + 平台需填成效 + 觸及為0 + 超過日期)
+                # 檢查是否逾期未填
                 post_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
                 due_date = post_date + timedelta(days=days_offset)
                 is_due = False
@@ -376,18 +376,18 @@ with tab1:
             cols[1].write(f"{ICONS.get(p['platform'], '')} {p['platform']}")
             cols[2].write(p['topic'])
             cols[3].write(f"{p['postType']}")
-            cols[4].write(p['postPurpose']) # 新增
-            cols[5].write(p['postFormat'])  # 新增
+            cols[4].write(p['postPurpose']) 
+            cols[5].write(p['postFormat']) 
             cols[6].write(status_map.get(p['status'], p['status']))
             cols[7].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
             
-            # 7日率 (含逾期提示)
+            # 7日互動率 (含逾期提示)
             if overdue7:
                 cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
             else:
                 cols[8].write(rate7)
 
-            # 30日率 (含逾期提示)
+            # 30日互動率 (含逾期提示)
             if overdue30:
                 cols[9].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
             else:
@@ -413,8 +413,15 @@ with tab1:
 
             st.markdown("<hr style='margin: 0; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
 
-        csv = df.drop(columns=['_raw', 'ID']).to_csv(index=False).encode('utf-8-sig')
-        st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
+        # 匯出邏輯 (修復: 確保 DataFrame 欄位正確)
+        if display_data:
+            df = pd.DataFrame(display_data)
+            if not df.empty:
+                # 修改匯出欄位名稱以符合新的 UI
+                export_df = df.drop(columns=['_raw', 'ID'], errors='ignore')
+                export_df.rename(columns={'7天率': '7日互動率', '30天率': '30日互動率'}, inplace=True)
+                csv = export_df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
     else:
         st.info("目前沒有符合條件的排程資料。")
 
@@ -445,7 +452,7 @@ with tab2:
             save_standards(std)
             st.success("KPI 設定已更新！")
 
-    # --- 數據概覽 (分為總體 / 廣告 / 非廣告) ---
+    # --- 數據概覽 ---
     published_posts = [p for p in filtered_posts if p['status'] == 'published']
     period = st.radio("分析基準", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天成效" if x == "metrics7d" else "🌳 一個月成效", horizontal=True)
     
