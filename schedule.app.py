@@ -548,35 +548,25 @@ with tab2:
 
     st.divider()
 
-    # --- 貼文類型分佈 (更新：交叉分析 + 切換模式) ---
+    # --- 貼文類型分佈 (交叉分析版) ---
     st.markdown("### 🍰 貼文類型分佈 (各平台)")
 
-    # 檢視模式切換
     view_type = st.radio("顯示模式", ["📄 表格模式", "📊 圖表模式"], horizontal=True)
 
     if target_posts:
-        # 準備交叉分析數據
         data_for_dist = []
         for p in target_posts:
             data_for_dist.append({'Platform': p['platform'], 'Type': p['postType']})
         
         df_dist = pd.DataFrame(data_for_dist)
-        
-        # 建立交叉表 (Rows: Platform, Cols: Type)
         pivot_df = pd.crosstab(df_dist['Platform'], df_dist['Type'])
-        
-        # 嘗試依照自定義順序排序 (如果該平台有數據)
         existing_platforms = [p for p in PLATFORMS if p in pivot_df.index]
         pivot_df = pivot_df.reindex(existing_platforms)
 
         if view_type == "📄 表格模式":
-            # 使用 heatmap 樣式顯示表格
-            st.dataframe(
-                pivot_df.style.background_gradient(cmap="Blues", axis=None), 
-                use_container_width=True
-            )
+            # 移除 background_gradient 以避免缺少 matplotlib 的錯誤
+            st.dataframe(pivot_df, use_container_width=True)
         else:
-            # 顯示堆疊長條圖
             st.bar_chart(pivot_df)
     else:
         st.caption("無符合條件的貼文數據")
