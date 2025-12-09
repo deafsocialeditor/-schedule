@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效",
+    page_title="社群排程與成效管家",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -644,4 +644,55 @@ with tab2:
         if filter_platform != "All" and filter_platform != pf:
             continue
             
-        posts_pf = [p for p in target_
+        posts_pf = [p for p in target_posts if p['platform'] == pf]
+        if not posts_pf: continue
+        
+        c, r, e, rt = calc_stats_subset(posts_pf, period)
+        
+        rt_display = f"{rt:.2f}%"
+        if pf == 'Threads':
+            rt_display = "-"
+
+        platform_table_data.append({
+            "平台": f"{ICONS.get(pf, '')} {pf}",
+            "篇數": c,
+            "總觸及": int(r),
+            "總互動": int(e),
+            "互動率": rt_display
+        })
+    
+    if platform_table_data:
+        st.dataframe(
+            pd.DataFrame(platform_table_data),
+            column_config={
+                "總觸及": st.column_config.NumberColumn(format="%d"),
+                "總互動": st.column_config.NumberColumn(format="%d"),
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("在此篩選條件下無資料。")
+
+    st.divider()
+
+    st.markdown("### 🍰 貼文類型分佈 (各平台)")
+
+    view_type = st.radio("顯示模式", ["📄 表格模式", "📊 圖表模式"], horizontal=True)
+
+    if target_posts:
+        data_for_dist = []
+        for p in target_posts:
+            data_for_dist.append({'Platform': p['platform'], 'Type': p['postType']})
+        
+        df_dist = pd.DataFrame(data_for_dist)
+        pivot_df = pd.crosstab(df_dist['Platform'], df_dist['Type'])
+        existing_platforms = [p for p in PLATFORMS if p in pivot_df.index]
+        pivot_df = pivot_df.reindex(existing_platforms)
+
+        if view_type == "📄 表格模式":
+            st.dataframe(pivot_df, use_container_width=True)
+        else:
+            st.bar_chart(pivot_df)
+    else:
+        st.caption("無符合條件的貼文數據")
