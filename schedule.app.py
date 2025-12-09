@@ -191,33 +191,38 @@ with tab1:
         is_edit = st.session_state.editing_post is not None
         post_data = st.session_state.editing_post if is_edit else {}
         
+        # 表單佈局
         c1, c2, c3 = st.columns([1, 2, 1])
-        f_date = c1.date_input("發布日期", 
-                               datetime.strptime(post_data.get('date', datetime.now().strftime("%Y-%m-%d")), "%Y-%m-%d") 
-                               if post_data else datetime.now(), key="entry_date")
         
+        # 1. 日期
+        f_date = c1.date_input("發布日期", value=datetime.now(), key="entry_date")
+        
+        # 2. 平台 (編輯單選 / 新增複選)
         if is_edit:
-            f_platform = c2.selectbox("平台 (編輯模式僅單選)", PLATFORMS, index=PLATFORMS.index(post_data['platform']), key="entry_platform_single")
+            f_platform = c2.selectbox("平台 (編輯模式僅單選)", PLATFORMS, key="entry_platform_single")
             selected_platforms = [f_platform]
         else:
             selected_platforms = c2.multiselect("平台 (可複選)", PLATFORMS, default=['Facebook'], key="entry_platform_multi")
             
-        f_topic = c3.text_input("主題", value=post_data.get('topic', ''), key="entry_topic")
+        # 3. 主題
+        f_topic = c3.text_input("主題", key="entry_topic")
 
         c4, c5, c6 = st.columns(3)
-        f_type = c4.selectbox("貼文類型", MAIN_POST_TYPES, index=MAIN_POST_TYPES.index(post_data.get('postType', '喜餅')) if post_data else 0, key="entry_type")
+        # 4. 類型
+        f_type = c4.selectbox("貼文類型", MAIN_POST_TYPES, key="entry_type")
         
-        sub_index = 0
-        if is_edit and post_data.get('postSubType') in SOUVENIR_SUB_TYPES:
-            sub_index = SOUVENIR_SUB_TYPES.index(post_data['postSubType']) + 1
-            
-        f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), index=sub_index, key="entry_subtype")
+        # 5. 子類型 (伴手禮用)
+        # 這裡需要特殊的 index 處理，因為它可能是 "無" 或 某個子類型
+        # 但因為我們用了 session_state 預填，這裡只要定義基本邏輯即可
+        f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), key="entry_subtype")
         
         c7, c8 = st.columns(2)
         
+        # 6. 目的 (複選平台時個別設定)
         platform_purposes = {} 
         
         with c7:
+            # 如果是新增模式且選了多個平台，顯示個別設定
             if not is_edit and len(selected_platforms) > 1:
                 st.markdown("**🎯 各平台目的設定**")
                 for p in selected_platforms:
@@ -228,20 +233,24 @@ with tab1:
                         index=POST_PURPOSES.index('互動')
                     )
             else:
-                default_index = POST_PURPOSES.index(post_data.get('postPurpose', '互動')) if post_data else 0
-                single_purpose = st.selectbox("目的", POST_PURPOSES, index=default_index, key="entry_purpose")
+                # 單一選擇
+                single_purpose = st.selectbox("目的", POST_PURPOSES, key="entry_purpose")
                 for p in selected_platforms:
                     platform_purposes[p] = single_purpose
 
-        f_format = c8.selectbox("形式", POST_FORMATS, index=POST_FORMATS.index(post_data.get('postFormat', '單圖')) if post_data else 0, key="entry_format")
+        # 7. 形式
+        f_format = c8.selectbox("形式", POST_FORMATS, key="entry_format")
 
+        # 8. 負責人
         c9, c10, c11 = st.columns(3)
-        f_po = c9.selectbox("專案負責人", [""] + PROJECT_OWNERS, index=(PROJECT_OWNERS.index(post_data['projectOwner']) + 1) if post_data and post_data['projectOwner'] else 0, key="entry_po")
-        f_owner = c10.selectbox("貼文負責人", POST_OWNERS, index=POST_OWNERS.index(post_data.get('postOwner', '一千')) if post_data else 0, key="entry_owner")
-        f_designer = c11.selectbox("美編", [""] + DESIGNERS, index=(DESIGNERS.index(post_data['designer']) + 1) if post_data and post_data['designer'] else 0, key="entry_designer")
+        f_po = c9.selectbox("專案負責人", [""] + PROJECT_OWNERS, key="entry_po")
+        f_owner = c10.selectbox("貼文負責人", POST_OWNERS, key="entry_owner")
+        f_designer = c11.selectbox("美編", [""] + DESIGNERS, key="entry_designer")
 
         st.divider()
         
+        # 計算預計填寫日期 (僅顯示用)
+        # 注意：date_input 回傳的是 date 物件，需要轉算
         due_date_7d = f_date + timedelta(days=7)
         due_date_1m = f_date + timedelta(days=30)
         
@@ -254,26 +263,23 @@ with tab1:
             st.caption("數據填寫")
             reach_label = "瀏覽數" if current_platform == 'Threads' else "觸及數"
             
-            def get_m(key, period):
-                return post_data.get(period, {}).get(key, 0) if post_data else 0
-
             m_cols = st.columns(2)
             
             with m_cols[0]:
                 st.markdown(f"##### 🔥 7天成效 <span style='font-size:0.7em; color:#ef4444; background:#fee2e2; padding:2px 6px; border-radius:4px;'>預計: {due_date_7d.strftime('%m/%d')}</span>", unsafe_allow_html=True)
-                metrics_input['metrics7d']['reach'] = st.number_input(f"7天-{reach_label}", value=get_m('reach', 'metrics7d'), step=1, key="entry_m7_reach")
-                metrics_input['metrics7d']['likes'] = st.number_input("7天-按讚", value=get_m('likes', 'metrics7d'), step=1, key="entry_m7_likes")
-                c_sub1, c_sub2 = st.columns(2)
-                metrics_input['metrics7d']['comments'] = c_sub1.number_input("7天-留言", value=get_m('comments', 'metrics7d'), step=1, key="entry_m7_comments")
-                metrics_input['metrics7d']['shares'] = c_sub2.number_input("7天-分享", value=get_m('shares', 'metrics7d'), step=1, key="entry_m7_shares")
+                metrics_input['metrics7d']['reach'] = st.number_input(f"7天-{reach_label}", step=1, key="entry_m7_reach")
+                metrics_input['metrics7d']['likes'] = st.number_input("7天-按讚", step=1, key="entry_m7_likes")
+                sub_c1, sub_c2 = st.columns(2)
+                metrics_input['metrics7d']['comments'] = sub_c1.number_input("7天-留言", step=1, key="entry_m7_comments")
+                metrics_input['metrics7d']['shares'] = sub_c2.number_input("7天-分享", step=1, key="entry_m7_shares")
 
             with m_cols[1]:
                 st.markdown(f"##### 🌳 一個月成效 <span style='font-size:0.7em; color:#a855f7; background:#f3e8ff; padding:2px 6px; border-radius:4px;'>預計: {due_date_1m.strftime('%m/%d')}</span>", unsafe_allow_html=True)
-                metrics_input['metrics1m']['reach'] = st.number_input(f"1月-{reach_label}", value=get_m('reach', 'metrics1m'), step=1, key="entry_m1_reach")
-                metrics_input['metrics1m']['likes'] = st.number_input("1月-按讚", value=get_m('likes', 'metrics1m'), step=1, key="entry_m1_likes")
-                c_sub3, c_sub4 = st.columns(2)
-                metrics_input['metrics1m']['comments'] = c_sub3.number_input("1月-留言", value=get_m('comments', 'metrics1m'), step=1, key="entry_m1_comments")
-                metrics_input['metrics1m']['shares'] = c_sub4.number_input("1月-分享", value=get_m('shares', 'metrics1m'), step=1, key="entry_m1_shares")
+                metrics_input['metrics1m']['reach'] = st.number_input(f"1月-{reach_label}", step=1, key="entry_m1_reach")
+                metrics_input['metrics1m']['likes'] = st.number_input("1月-按讚", step=1, key="entry_m1_likes")
+                sub_c3, sub_c4 = st.columns(2)
+                metrics_input['metrics1m']['comments'] = sub_c3.number_input("1月-留言", step=1, key="entry_m1_comments")
+                metrics_input['metrics1m']['shares'] = sub_c4.number_input("1月-分享", step=1, key="entry_m1_shares")
         else:
             st.info(f"ℹ️ {current_platform} / {f_format} 不需要填寫成效數據")
 
@@ -338,7 +344,8 @@ with tab1:
                 
                 save_data(st.session_state.posts)
                 
-                # 清空欄位
+                # --- 清空欄位邏輯 ---
+                # 刪除所有以 'entry_' 或 'purpose_for_' 開頭的 session_state key
                 keys_to_clear = [key for key in st.session_state.keys() if key.startswith("entry_") or key.startswith("purpose_for_")]
                 for key in keys_to_clear:
                     del st.session_state[key]
@@ -348,6 +355,10 @@ with tab1:
         if st.session_state.editing_post:
             if st.button("取消編輯"):
                 st.session_state.editing_post = None
+                # 取消編輯時也清空，避免殘留
+                keys_to_clear = [key for key in st.session_state.keys() if key.startswith("entry_")]
+                for key in keys_to_clear:
+                    del st.session_state[key]
                 st.rerun()
 
     # --- 列表顯示邏輯 ---
@@ -390,8 +401,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        # 修改：columns 數量設定為 12 (0.8 + 0.7 + 1.8 + 0.7 + 0.6 + 0.6 + 0.6 + 0.6 + 0.6 + 0.6 + 0.4 + 0.4)
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        # Columns 數量 12
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]) # 修正這裡，多補一個 0.4 給第 12 欄
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -413,7 +424,6 @@ with tab1:
                 reach = safe_num(metrics.get('reach', 0))
                 
                 rate_str = "-"
-                # Threads 不計算互動率
                 if p['platform'] == 'Threads':
                     rate_str = "-"
                 elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
@@ -450,10 +460,9 @@ with tab1:
                 '_raw': p 
             })
 
-            # 使用標準 container
             with st.container():
-                # 欄位定義 (12欄)
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                # Columns 數量 12
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
@@ -479,9 +488,46 @@ with tab1:
                     
                 cols[9].write(f"{p['postOwner']}")
 
+                # 編輯按鈕 (Logic: 預填 session state)
                 if cols[10].button("✏️", key=f"edit_{p['id']}"):
                     st.session_state.editing_post = p
+                    
+                    # 預填所有表單欄位到 session_state
+                    st.session_state['entry_date'] = datetime.strptime(p['date'], "%Y-%m-%d")
+                    st.session_state['entry_platform_single'] = p['platform']
+                    st.session_state['entry_topic'] = p['topic']
+                    st.session_state['entry_type'] = p['postType']
+                    
+                    # 處理子類型
+                    sub_idx = SOUVENIR_SUB_TYPES.index(p['postSubType']) + 1 if p['postSubType'] in SOUVENIR_SUB_TYPES else 0
+                    st.session_state['entry_subtype'] = ["-- 無 --"] + SOUVENIR_SUB_TYPES # Hack to ensure option exists if not None? No, simple logic:
+                    # Streamlit requires explicit index for selectbox if setting via state key? No, value match is enough if using key? 
+                    # Actually for selectbox with key, we usually rely on 'index' param or pre-set state value?
+                    # Streamlit is tricky here. The best way is to match the option list.
+                    # Let's simple set the value (which must correspond to an option)
+                    st.session_state['entry_subtype'] = p.get('postSubType', '') if p.get('postSubType', '') in (["-- 無 --"] + SOUVENIR_SUB_TYPES) else "-- 無 --"
+
+                    st.session_state['entry_purpose'] = p['postPurpose']
+                    st.session_state['entry_format'] = p['postFormat']
+                    st.session_state['entry_po'] = p['projectOwner']
+                    st.session_state['entry_owner'] = p['postOwner']
+                    st.session_state['entry_designer'] = p['designer']
+                    
+                    # Metrics
+                    m7 = p.get('metrics7d', {})
+                    st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0))
+                    st.session_state['entry_m7_likes'] = safe_num(m7.get('likes', 0))
+                    st.session_state['entry_m7_comments'] = safe_num(m7.get('comments', 0))
+                    st.session_state['entry_m7_shares'] = safe_num(m7.get('shares', 0))
+                    
+                    m1 = p.get('metrics1m', {})
+                    st.session_state['entry_m1_reach'] = safe_num(m1.get('reach', 0))
+                    st.session_state['entry_m1_likes'] = safe_num(m1.get('likes', 0))
+                    st.session_state['entry_m1_comments'] = safe_num(m1.get('comments', 0))
+                    st.session_state['entry_m1_shares'] = safe_num(m1.get('shares', 0))
+
                     st.rerun()
+
                 if cols[11].button("🗑️", key=f"del_{p['id']}"):
                     st.session_state.posts = [item for item in st.session_state.posts if item['id'] != p['id']]
                     save_data(st.session_state.posts)
@@ -495,7 +541,6 @@ with tab1:
                     d_c3.metric(f"30天-{r_label}", f"{r30:,}")
                     d_c4.metric("30天-互動", f"{e30:,}")
 
-            # 分隔線邏輯
             if is_today:
                 st.markdown("<hr style='margin: 0; border-top: 2px solid #fcd34d;'>", unsafe_allow_html=True)
             else:
