@@ -3,13 +3,12 @@ import pandas as pd
 import json
 import os
 import uuid
-import calendar # 新增：用於生成日曆結構
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效管家",
+    page_title="社群排程與成效",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -243,17 +242,26 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # --- 新增：自動滾動到頂部 (JavaScript) ---
+    # --- 新增：自動滾動到頂部 (JavaScript 強制版) ---
     if st.session_state.scroll_to_top:
         components.html(
             """
             <script>
-                window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
+                // 嘗試多種方式滾動到頂部，適應不同 Streamlit 版本與瀏覽器
+                try {
+                    window.parent.document.querySelector('section.main').scrollTo(0, 0);
+                } catch (e) {
+                    try {
+                        window.parent.scrollTo(0, 0);
+                    } catch (e2) {
+                        console.log("Scroll attempt failed");
+                    }
+                }
             </script>
             """,
             height=0
         )
-        st.session_state.scroll_to_top = False 
+        st.session_state.scroll_to_top = False
 
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
@@ -267,9 +275,9 @@ with tab1:
         if 'entry_type' not in st.session_state: st.session_state['entry_type'] = MAIN_POST_TYPES[0]
         if 'entry_subtype' not in st.session_state: st.session_state['entry_subtype'] = "-- 無 --"
         if 'entry_purpose' not in st.session_state: st.session_state['entry_purpose'] = POST_PURPOSES[0]
-        if 'entry_format' not in st.session_state: st.session_state['entry_format'] = "" # 形式預設空白
+        if 'entry_format' not in st.session_state: st.session_state['entry_format'] = ""
         if 'entry_po' not in st.session_state: st.session_state['entry_po'] = ""
-        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = "" # 負責人預設空白
+        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = "" 
         if 'entry_designer' not in st.session_state: st.session_state['entry_designer'] = ""
         
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares',
@@ -439,37 +447,28 @@ with tab1:
     if filter_format != "All":
         filtered_posts = [p for p in filtered_posts if p['postFormat'] == filter_format]
 
-    # --- 檢視模式切換 (新增) ---
+    # --- 檢視模式切換 ---
     view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed")
-    st.write("") # Spacer
+    st.write("") 
 
     if view_mode == "🗓️ 日曆模式":
-        # --- 日曆模式實作 ---
-        
-        # 決定顯示哪一個年份和月份
-        # 優先順序: 月份篩選器 > 自訂範圍的開始日期 > 現在
         if date_filter_type == "月":
             year_str, month_str = selected_month.split("-")
             cal_year, cal_month = int(year_str), int(month_str)
         else:
             cal_year, cal_month = start_date.year, start_date.month
 
-        # 顯示當前月份標題
         st.markdown(f"### 🗓️ {cal_year} 年 {cal_month} 月")
 
-        # 產生日曆矩陣
         cal = calendar.monthcalendar(cal_year, cal_month)
-        
-        # 表頭 (週一 ~ 週日)
         cols = st.columns(7)
         weekdays = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
         for i, day_name in enumerate(weekdays):
             cols[i].markdown(f"<div class='cal-day-header'>{day_name}</div>", unsafe_allow_html=True)
 
-        # 繪製每一週
         platform_colors = {
-            'Facebook': 'cal-fb', 'Instagram': 'cal-ig', 'LINE@': 'cal-line',
-            'YouTube': 'cal-yt', 'Threads': 'cal-threads'
+            'Facebook': '#3b82f6', 'Instagram': '#ec4899', 'LINE@': '#22c55e',
+            'YouTube': '#ef4444', 'Threads': '#1f2937'
         }
 
         for week in cal:
@@ -479,7 +478,6 @@ with tab1:
                     if day == 0:
                         st.markdown("<div class='cal-day-cell' style='background-color:#f9fafb;'></div>", unsafe_allow_html=True)
                     else:
-                        # 當日容器
                         current_date_str = f"{cal_year}-{cal_month:02d}-{day:02d}"
                         is_today_cal = (current_date_str == datetime.now().strftime("%Y-%m-%d"))
                         bg_style = "background-color:#fef9c3; border:2px solid #fcd34d;" if is_today_cal else "background-color:white; border:1px solid #e5e7eb;"
@@ -491,21 +489,19 @@ with tab1:
                                 </div>
                             """, unsafe_allow_html=True)
                             
-                            # 篩選當日貼文 (這裡使用 filtered_posts，所以也會受到側邊欄篩選影響)
                             day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
                             
                             for p in day_posts:
-                                p_cls = platform_colors.get(p['platform'], 'cal-fb')
-                                # 使用 Button 模擬點擊效果 (雖不能完全自訂樣式，但最穩定)
-                                # 為了讓按鈕看起來像標籤，我們使用 emoji + text
-                                label = f"{ICONS.get(p['platform'],'')} {p['topic'][:8]}.."
-                                if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}\n類型: {p['postType']}\n負責: {p['postOwner']}"):
+                                p_color = platform_colors.get(p['platform'], '#6b7280')
+                                label = f"{ICONS.get(p['platform'],'')} {p['topic'][:6]}.."
+                                
+                                # 使用 Button 觸發編輯
+                                if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}"):
                                     edit_post_callback(p)
                                     st.rerun()
 
     else:
-        # --- 原本的列表模式 ---
-        
+        # --- 列表模式 ---
         col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
         with col_sort1:
             sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型"], index=0)
@@ -672,6 +668,7 @@ with tab2:
     published_posts = [p for p in filtered_posts]
     target_posts = published_posts
     
+    # 修正邏輯錯誤：使用 == 進行精確比對
     if ad_filter_val == "💰 廣告成效 (僅廣告/門市廣告)":
         target_posts = [p for p in target_posts if p['postPurpose'] in AD_PURPOSE_LIST]
     elif ad_filter_val == "💬 非廣告成效 (排除廣告)":
