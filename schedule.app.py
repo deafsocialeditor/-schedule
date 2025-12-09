@@ -128,7 +128,7 @@ if 'standards' not in st.session_state:
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
 
-# --- 4. 自訂 CSS (白色背景 + 今日高亮樣式) ---
+# --- 4. 自訂 CSS (白色背景) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -140,14 +140,6 @@ st.markdown("""
     .red { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
     .gray { background-color: #f3f4f6; color: #9ca3af; }
     .overdue-alert { color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }
-    
-    /* 今日高亮樣式 */
-    .today-highlight {
-        color: #eab308; /* 黃橘色 */
-        font-weight: 900;
-        border-bottom: 2px solid #eab308;
-        padding-bottom: 2px;
-    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -211,6 +203,8 @@ with tab1:
             
         f_subtype = c5.selectbox("子類型 (伴手禮用)", ["-- 無 --"] + SOUVENIR_SUB_TYPES, disabled=(f_type != '伴手禮'), index=sub_index)
         
+        # 移除狀態選單，預設都是已發布
+        
         c7, c8 = st.columns(2)
         f_purpose = c7.selectbox("目的", POST_PURPOSES, index=POST_PURPOSES.index(post_data.get('postPurpose', '互動')) if post_data else 0)
         f_format = c8.selectbox("形式", POST_FORMATS, index=POST_FORMATS.index(post_data.get('postFormat', '單圖')) if post_data else 0)
@@ -225,11 +219,14 @@ with tab1:
         due_date_7d = f_date + timedelta(days=7)
         due_date_1m = f_date + timedelta(days=30)
         
+        # 判斷顯示邏輯
         current_platform = selected_platforms[0] if selected_platforms else 'Facebook'
         hide_metrics = is_metrics_disabled(current_platform, f_format)
         
         if not hide_metrics:
             st.caption("數據填寫")
+            
+            # Threads 改為 "瀏覽數"
             reach_label = "瀏覽數" if current_platform == 'Threads' else "觸及數"
             
             def get_m(key, period):
@@ -273,7 +270,7 @@ with tab1:
                     'projectOwner': f_po,
                     'postOwner': f_owner,
                     'designer': f_designer,
-                    'status': 'published',
+                    'status': 'published', # 強制設定為已發布
                     'metrics7d': metrics_input['metrics7d'],
                     'metrics1m': metrics_input['metrics1m']
                 }
@@ -288,6 +285,7 @@ with tab1:
                 else:
                     for p in selected_platforms:
                         new_post = {**new_base, 'id': str(uuid.uuid4()), 'platform': p}
+                        # 再次檢查：如果該平台不需要填寫成效，清空數據
                         if is_metrics_disabled(p, f_format):
                             new_post['metrics7d'] = {}
                             new_post['metrics1m'] = {}
@@ -402,52 +400,58 @@ with tab1:
                 '_raw': p 
             })
 
-            # 修改：使用 12 個 columns 變數 (0-11)
-            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
-            
+            # 如果是今天，使用 st.warning 容器包覆整條 (顯示為黃色區塊)
             if is_today:
-                cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
+                row_wrapper = st.warning(icon="✨")
             else:
-                cols[0].write(p['date'])
+                row_wrapper = st.container()
 
-            cols[1].write(f"{ICONS.get(p['platform'], '')} {p['platform']}")
-            cols[2].write(p['topic'])
-            cols[3].write(f"{p['postType']}")
-            cols[4].write(p['postPurpose']) 
-            cols[5].write(p['postFormat']) 
-            cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
-            
-            if overdue7:
-                cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
-            else:
-                cols[7].write(rate7)
-
-            if overdue30:
-                cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
-            else:
-                cols[8].write(rate30)
+            with row_wrapper:
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                 
-            cols[9].write(f"{p['postOwner']}")
+                # 如果是今天，加個標記 (雖然容器已經有 icon 了)
+                if is_today:
+                    cols[0].write(f"**{p['date']}**")
+                else:
+                    cols[0].write(p['date'])
 
-            # Edit Button (Index 10)
-            if cols[10].button("✏️", key=f"edit_{p['id']}"):
-                st.session_state.editing_post = p
-                st.rerun()
-            # Delete Button (Index 11)
-            if cols[11].button("🗑️", key=f"del_{p['id']}"):
-                st.session_state.posts = [item for item in st.session_state.posts if item['id'] != p['id']]
-                save_data(st.session_state.posts)
-                st.rerun()
+                cols[1].write(f"{ICONS.get(p['platform'], '')} {p['platform']}")
+                cols[2].write(p['topic'])
+                cols[3].write(f"{p['postType']}")
+                cols[4].write(p['postPurpose']) 
+                cols[5].write(p['postFormat']) 
+                cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
+                
+                if overdue7:
+                    cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
+                else:
+                    cols[7].write(rate7)
 
-            with st.expander(f"📉 {p['topic']} - 詳細數據 (點擊展開)"):
-                r_label = "瀏覽" if p['platform'] == 'Threads' else "觸及"
-                d_c1, d_c2, d_c3, d_c4 = st.columns(4)
-                d_c1.metric(f"7天-{r_label}", f"{r7:,}")
-                d_c2.metric("7天-互動", f"{e7:,}")
-                d_c3.metric(f"30天-{r_label}", f"{r30:,}")
-                d_c4.metric("30天-互動", f"{e30:,}")
+                if overdue30:
+                    cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
+                else:
+                    cols[8].write(rate30)
+                    
+                cols[9].write(f"{p['postOwner']}")
 
-            st.markdown("<hr style='margin: 0; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
+                if cols[10].button("✏️", key=f"edit_{p['id']}"):
+                    st.session_state.editing_post = p
+                    st.rerun()
+                if cols[11].button("🗑️", key=f"del_{p['id']}"):
+                    st.session_state.posts = [item for item in st.session_state.posts if item['id'] != p['id']]
+                    save_data(st.session_state.posts)
+                    st.rerun()
+
+                with st.expander(f"📉 {p['topic']} - 詳細數據 (點擊展開)"):
+                    r_label = "瀏覽" if p['platform'] == 'Threads' else "觸及"
+                    d_c1, d_c2, d_c3, d_c4 = st.columns(4)
+                    d_c1.metric(f"7天-{r_label}", f"{r7:,}")
+                    d_c2.metric("7天-互動", f"{e7:,}")
+                    d_c3.metric(f"30天-{r_label}", f"{r30:,}")
+                    d_c4.metric("30天-互動", f"{e30:,}")
+
+            if not is_today:
+                st.markdown("<hr style='margin: 0; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
 
         if display_data:
             df = pd.DataFrame(display_data)
