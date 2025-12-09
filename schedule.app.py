@@ -217,15 +217,13 @@ with tab1:
         
         c7, c8 = st.columns(2)
         
-        # --- 目的欄位 (修改重點：複選平台時個別設定) ---
-        platform_purposes = {} # 用來儲存各平台的目的
+        # --- 目的欄位 (複選平台時個別設定) ---
+        platform_purposes = {} 
         
         with c7:
-            # 如果是「新增模式」且「選了超過1個平台」，顯示個別設定選單
             if not is_edit and len(selected_platforms) > 1:
                 st.markdown("**🎯 各平台目的設定**")
                 for p in selected_platforms:
-                    # 為每個平台產生獨立的 selectbox
                     platform_purposes[p] = st.selectbox(
                         f"{ICONS.get(p, '')} {p}", 
                         POST_PURPOSES, 
@@ -233,11 +231,8 @@ with tab1:
                         index=POST_PURPOSES.index('互動')
                     )
             else:
-                # 單一平台或編輯模式，維持原本單一選單
                 default_index = POST_PURPOSES.index(post_data.get('postPurpose', '互動')) if post_data else 0
                 single_purpose = st.selectbox("目的", POST_PURPOSES, index=default_index)
-                
-                # 將單一選擇應用到所有選中的平台 (為了後續統一處理)
                 for p in selected_platforms:
                     platform_purposes[p] = single_purpose
 
@@ -292,10 +287,7 @@ with tab1:
             if not f_topic:
                 st.error("請填寫主題")
             else:
-                # 這裡不需要先定義 new_base，因為 postPurpose 會變動
-                
                 if is_edit:
-                    # 編輯模式下，selected_platforms 只有一個，直接取值
                     p = selected_platforms[0]
                     final_purpose = platform_purposes[p]
                     
@@ -304,7 +296,7 @@ with tab1:
                         'topic': f_topic,
                         'postType': f_type,
                         'postSubType': f_subtype if f_subtype != "-- 無 --" else "",
-                        'postPurpose': final_purpose, # 使用對應的目的
+                        'postPurpose': final_purpose, 
                         'postFormat': f_format,
                         'projectOwner': f_po,
                         'postOwner': f_owner,
@@ -321,9 +313,7 @@ with tab1:
                     st.session_state.editing_post = None
                     st.success("已更新！")
                 else:
-                    # 新增模式：迴圈處理每個平台
                     for p in selected_platforms:
-                        # 取得該平台對應的目的
                         final_purpose = platform_purposes[p]
                         
                         new_post = {
@@ -333,7 +323,7 @@ with tab1:
                             'topic': f_topic,
                             'postType': f_type,
                             'postSubType': f_subtype if f_subtype != "-- 無 --" else "",
-                            'postPurpose': final_purpose, # 寫入該平台的目的
+                            'postPurpose': final_purpose,
                             'postFormat': f_format,
                             'projectOwner': f_po,
                             'postOwner': f_owner,
@@ -343,7 +333,6 @@ with tab1:
                             'metrics1m': metrics_input['metrics1m']
                         }
                         
-                        # 如果該平台不需要填寫成效，清空數據
                         if is_metrics_disabled(p, f_format):
                             new_post['metrics7d'] = {}
                             new_post['metrics1m'] = {}
@@ -399,7 +388,8 @@ with tab1:
     st.divider()
 
     if filtered_posts:
-        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        # 修改：columns 數量設定為 12 (0.8 + 0.7 + 1.8 + 0.7 + 0.6 + 0.6 + 0.6 + 0.6 + 0.6 + 0.6 + 0.4 + 0.4)
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
         headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
         
         for col, h in zip(col_list, headers):
@@ -460,7 +450,8 @@ with tab1:
 
             # 使用標準 container
             with st.container():
-                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                # 欄位定義 (12欄)
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                 
                 if is_today:
                     cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
