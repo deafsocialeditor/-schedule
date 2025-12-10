@@ -41,7 +41,7 @@ ICONS = {
     'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
 }
 
-# 平台顏色對照 (全域定義)
+# 平台顏色對照 (Hex) - 全域定義，供列表與日曆共用
 PLATFORM_COLORS = {
     'Facebook': '#3b82f6',   # 藍
     'Instagram': '#ec4899',  # 粉
@@ -92,7 +92,10 @@ def save_standards(standards):
         json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    """判斷是否不需要填寫成效 (Threads 需填寫，故排除)"""
+    """
+    判斷是否不需要填寫成效。
+    注意：Threads 需要填寫數據，所以不包含在這裡。
+    """
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
@@ -204,7 +207,7 @@ if 'target_scroll_id' not in st.session_state:
 if 'scroll_to_list_item' not in st.session_state:
     st.session_state.scroll_to_list_item = False
 
-# --- 4. 自訂 CSS (視覺優化：分隔線與日曆顏色) ---
+# --- 4. 自訂 CSS (視覺優化) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
@@ -218,6 +221,7 @@ st.markdown("""
     .gray { background-color: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }
     
     .overdue-alert { color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }
+    .overdue-text { color: #dc2626; font-weight: bold; }
     
     /* 平台標籤樣式 (加大、醒目) */
     .platform-badge {
@@ -237,7 +241,7 @@ st.markdown("""
     .pf-line { background-color: #22c55e; }
     .pf-yt { background-color: #ef4444; }
     .pf-threads { background-color: #000000; }
-    .pf-group { background-color: #d97706; }
+    .pf-group { background-color: #d97706; } /* 社團橘色 */
     
     /* 列表行樣式 (移除區塊感，改為分隔線) */
     .post-row {
@@ -588,16 +592,13 @@ with tab1:
                             day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
                             
                             for p in day_posts:
-                                # 使用平台顏色
                                 p_color = PLATFORM_COLORS.get(p['platform'], '#6b7280')
-                                label = f"{p['topic'][:6]}.." 
-                                # 點擊後跳轉回列表並定位
+                                label = f"{p['topic'][:6]}.."
+                                # 日曆點擊：觸發 go_to_post_from_calendar (只捲動，不編輯)
                                 if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}", on_click=go_to_post_from_calendar, args=(p['id'],)):
                                     pass
                                     
-                                # 使用 CSS 將按鈕顏色覆蓋為平台顏色 (Hack)
-                                # 注意：Streamlit 原生按鈕難以完全自訂顏色，這裡保持預設樣式，
-                                # 若要強行上色需複雜 CSS 注入。這裡我們使用左側 border color 區分。
+                                # CSS Hack for button color
                                 st.markdown(f"""
                                 <style>
                                 div[data-testid="stButton"] button[kind="secondary"] {{
@@ -627,6 +628,9 @@ with tab1:
         st.divider()
 
         if filtered_posts:
+            # 初始化 display_data (防止 NameError)
+            display_data = []
+
             # 欄位定義：12 欄 (0~11)
             col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
@@ -662,7 +666,7 @@ with tab1:
                     post_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
                     due_date = post_date + timedelta(days=days_offset)
                     
-                    # 判斷是否顯示鈴鐺 (Threads 也要顯示)
+                    # 判斷是否顯示鈴鐺
                     show_bell = False
                     if not is_metrics_disabled(p['platform'], p['postFormat']):
                         if today_date_obj >= due_date and reach == 0:
@@ -673,8 +677,27 @@ with tab1:
                 rate7, show_bell_7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
                 rate30, show_bell_30, r30, e30 = calc_rate_and_check_due(p.get('metrics1m', {}), 30)
 
+                display_data.append({
+                    'ID': p['id'],
+                    '日期': p['date'],
+                    '平台': p['platform'],
+                    '主題': p['topic'],
+                    '類型': p['postType'],
+                    '子類型': p.get('postSubType', ''),
+                    '目的': p['postPurpose'],
+                    '形式': p['postFormat'],
+                    'KPI': label,
+                    '7日互動率': rate7,
+                    '30日互動率': rate30,
+                    '7日觸及': r7, '7日互動': e7,
+                    '30日觸及': r30, '30日互動': e30,
+                    '負責人': p['postOwner'],
+                    '_raw': p 
+                })
+
                 # 滾動高亮判定
                 is_target = (st.session_state.target_scroll_id == p['id'])
+                
                 row_class = "scroll-highlight" if is_target else ("today-highlight" if is_today else "post-row")
                 
                 # HTML 錨點
@@ -691,6 +714,7 @@ with tab1:
                     cols[1].markdown(f"<span class='platform-badge {pf_cls}'>{ICONS.get(p['platform'],'')} {p['platform']}</span>", unsafe_allow_html=True)
                     
                     cols[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
+                    
                     cols[3].write(f"{p['postType']}")
                     cols[4].write(p['postPurpose']) 
                     cols[5].write(p['postFormat']) 
@@ -710,11 +734,10 @@ with tab1:
                         
                     cols[9].write(f"{p['postOwner']}")
 
-                    # Edit (Index 10)
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
-                    # Delete (Index 11) - Confirmed 12 cols
+                    # 第 12 欄 (Index 11) - 刪除按鈕
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
@@ -728,6 +751,7 @@ with tab1:
                         r_label = "瀏覽" if p['platform'] == 'Threads' else "觸及"
                         d_c1, d_c2, d_c3, d_c4 = st.columns(4)
                         
+                        # 內部數值提示
                         warn7 = "🔔 " if (show_bell_7 and p['platform'] == 'Threads') else ""
                         warn30 = "🔔 " if (show_bell_30 and p['platform'] == 'Threads') else ""
 
@@ -746,7 +770,6 @@ with tab1:
             st.info("目前沒有符合條件的排程資料。")
 
 # === TAB 2: 數據分析 ===
-# (數據分析部分維持不變)
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
