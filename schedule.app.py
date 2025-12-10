@@ -41,24 +41,20 @@ ICONS = {
     'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
 }
 
-# 平台顏色標籤 (日曆用色塊前綴)
-PLATFORM_BLOCKS = {
-    'Facebook': '🟦', 
-    'Instagram': '🟪', 
-    'LINE@': '🟩', 
-    'YouTube': '🟥', 
-    'Threads': '⬛', 
-    '社團': '🟧'
+# 平台顏色對照 (全域定義)
+PLATFORM_COLORS = {
+    'Facebook': '#3b82f6',   # 藍
+    'Instagram': '#ec4899',  # 粉
+    'LINE@': '#22c55e',      # 綠
+    'YouTube': '#ef4444',    # 紅
+    'Threads': '#000000',    # 黑
+    '社團': '#d97706'        # 橘
 }
 
-# 平台 CSS 顏色 (列表標籤用)
-PLATFORM_CSS_COLORS = {
-    'Facebook': '#3b82f6', 
-    'Instagram': '#ec4899', 
-    'LINE@': '#22c55e', 
-    'YouTube': '#ef4444', 
-    'Threads': '#000000', 
-    '社團': '#d97706'
+# 平台顏色標籤 (日曆用色塊前綴 - 備用，目前主要用 CSS 顏色)
+PLATFORM_BLOCKS = {
+    'Facebook': '🟦', 'Instagram': '🟪', 'LINE@': '🟩', 
+    'YouTube': '🟥', 'Threads': '⬛', '社團': '🟧'
 }
 
 # --- 2. 資料處理函式 ---
@@ -102,10 +98,7 @@ def save_standards(standards):
         json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    """
-    判斷是否不需要填寫成效。
-    注意：Threads 需要填寫數據，所以不包含在這裡。
-    """
+    """判斷是否不需要填寫成效 (Threads 需填寫，故排除)"""
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
@@ -236,7 +229,7 @@ st.markdown("""
     /* 平台標籤樣式 (加大、醒目) */
     .platform-badge {
         font-weight: 900;
-        padding: 4px 8px;
+        padding: 6px 12px;
         border-radius: 6px;
         color: white;
         font-size: 1.0em;
@@ -244,6 +237,7 @@ st.markdown("""
         box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         width: 100%;
         text-align: center;
+        margin-bottom: 5px;
     }
     .pf-fb { background-color: #3b82f6; }
     .pf-ig { background-color: #ec4899; }
@@ -277,7 +271,7 @@ st.markdown("""
     .today-highlight::before {
         content: "✨ 今日貼文";
         position: absolute;
-        top: 0px;
+        top: 2px;
         left: 0;
         background: #fcd34d;
         color: #92400e;
@@ -295,16 +289,16 @@ st.markdown("""
     .scroll-highlight {
         animation: highlight-fade 2s ease-out;
         border-bottom: 2px solid #3b82f6 !important;
-        padding: 10px 0;
+        padding: 15px 0;
     }
     
     .row-text-lg { font-size: 1.1em; font-weight: bold; color: #1f2937; }
     .row-text-md { font-size: 1em; color: #4b5563; }
     
-    /* 日曆樣式 */
+    /* 日曆樣式 (緊湊化) */
     .cal-day-header { text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 5px; }
-    .cal-day-cell { min-height: 100px; padding: 5px; border-radius: 8px; font-size: 0.8em; }
-    .cal-day-num { font-weight: bold; font-size: 1.1em; color: #374151; margin-bottom: 5px; }
+    .cal-day-cell { min-height: 60px; padding: 2px; border-radius: 6px; font-size: 0.8em; } /* 縮小高度與內距 */
+    .cal-day-num { font-weight: bold; font-size: 1.0em; color: #374151; margin-bottom: 2px; margin-left: 2px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -605,19 +599,33 @@ with tab1:
                             day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
                             
                             for p in day_posts:
-                                # 使用色塊 + 標題
-                                color_block = PLATFORM_BLOCKS.get(p['platform'], '🟦')
-                                label = f"{color_block} {p['topic'][:6]}.."
+                                # 使用平台顏色
+                                p_color = PLATFORM_COLORS.get(p['platform'], '#6b7280')
+                                label = f"{p['topic'][:6]}.."
+                                # 日曆點擊：觸發 go_to_post_from_calendar
                                 if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}", on_click=go_to_post_from_calendar, args=(p['id'],)):
                                     pass
+                                    
+                                # CSS Hack for button color
+                                st.markdown(f"""
+                                <style>
+                                div[data-testid="stButton"] button[kind="secondary"] {{
+                                    border-left: 5px solid {p_color} !important;
+                                    text-align: left;
+                                    padding-left: 5px;
+                                }}
+                                </style>
+                                """, unsafe_allow_html=True)
 
     else:
         # --- 列表模式 ---
+        # 修正：先初始化 display_data，避免空資料時報錯
+        display_data = []
+
         col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
         with col_sort1:
             sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型"], index=0)
         with col_sort2:
-            # 修改：預設為 升序 (舊->新)
             sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0)
 
         key_map = { "日期": "date", "平台": "platform", "主題": "topic", "貼文類型": "postType" }
@@ -631,7 +639,7 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            # 欄位定義：12 欄 (0~11) - CONFIRMED 12 NUMBERS
+            # 欄位定義：12 欄 (0~11)
             col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             
@@ -677,9 +685,26 @@ with tab1:
                 rate7, show_bell_7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
                 rate30, show_bell_30, r30, e30 = calc_rate_and_check_due(p.get('metrics1m', {}), 30)
 
+                display_data.append({
+                    'ID': p['id'],
+                    '日期': p['date'],
+                    '平台': p['platform'],
+                    '主題': p['topic'],
+                    '類型': p['postType'],
+                    '子類型': p.get('postSubType', ''),
+                    '目的': p['postPurpose'],
+                    '形式': p['postFormat'],
+                    'KPI': label,
+                    '7日互動率': rate7,
+                    '30日互動率': rate30,
+                    '7日觸及': r7, '7日互動': e7,
+                    '30日觸及': r30, '30日互動': e30,
+                    '負責人': p['postOwner'],
+                    '_raw': p 
+                })
+
                 # 滾動高亮判定
                 is_target = (st.session_state.target_scroll_id == p['id'])
-                
                 row_class = "scroll-highlight" if is_target else ("today-highlight" if is_today else "post-row")
                 
                 # HTML 錨點
@@ -687,13 +712,13 @@ with tab1:
                 
                 with st.container():
                     st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
-                    # 12 columns - Confirmed
+                    # 12 columns
                     cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
                     
                     pf_cls = pf_class_map.get(p['platform'], 'pf-fb')
-                    # 移除列表上的 ICON，只保留文字
+                    # 移除 ICON
                     cols[1].markdown(f"<span class='platform-badge {pf_cls}'>{p['platform']}</span>", unsafe_allow_html=True)
                     
                     cols[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
@@ -719,12 +744,13 @@ with tab1:
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
-                    # 第 12 欄 (Index 11) - 刪除按鈕
+                    # 第 12 欄 (Index 11)
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
-                    # 詳細數據展開區 (Threads 鈴鐺強調)
+                    # 詳細數據展開區
                     expander_label = "📉 詳細數據"
+                    # Threads 若缺資料，外層顯示紅字鈴鐺
                     if p['platform'] == 'Threads' and (show_bell_7 or show_bell_30):
                          expander_label = "📉 詳細數據 :red[🔔 缺資料]" 
 
@@ -743,14 +769,12 @@ with tab1:
                     st.markdown('</div>', unsafe_allow_html=True)
 
             if display_data:
-                # 僅保留 CSV 下載按鈕
                 csv = pd.DataFrame(display_data).drop(columns=['_raw', 'ID'], errors='ignore').to_csv(index=False).encode('utf-8-sig')
                 st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
         else:
             st.info("目前沒有符合條件的排程資料。")
 
 # === TAB 2: 數據分析 ===
-# (數據分析部分維持不變)
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
