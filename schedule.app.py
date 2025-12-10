@@ -51,12 +51,12 @@ PLATFORM_COLORS = {
     '社團': '#F97316'        # Community Orange
 }
 
-# 平台隱藏標記 (用於 CSS 選擇器識別平台，實現日曆色塊)
+# 平台隱藏標記 (用於 CSS 選擇器識別平台)
 PLATFORM_MARKS = {
     'Facebook': '🟦', 
-    'Instagram': '🟪', 
+    'Instagram': '🟥', 
     'LINE@': '🟩', 
-    'YouTube': '🟥', 
+    'YouTube': '🟪', 
     'Threads': '⬛', 
     '社團': '🟧'
 }
@@ -219,23 +219,24 @@ if 'scroll_to_list_item' not in st.session_state:
 calendar_button_css = ""
 for pf, mark in PLATFORM_MARKS.items():
     color = PLATFORM_COLORS.get(pf, '#888')
-    # 使用 aria-label^="mark" 選擇器來變色
+    # 日曆按鈕樣式 - 極致緊湊與滿版
     calendar_button_css += f"""
     div[data-testid="stButton"] button[aria-label^="{mark}"] {{
         background-color: {color} !important;
         color: white !important;
         border: none !important;
-        font-size: 0.8em !important;
-        padding: 2px 6px !important;
-        border-radius: 4px !important;
+        font-size: 0.75em !important; /* 縮小字體 */
+        padding: 1px 4px !important; /* 極小內距 */
+        border-radius: 3px !important;
         width: 100% !important;
         text-align: left !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         display: block !important;
-        margin-top: 1px !important;
-        line-height: 1.2 !important;
+        margin-top: 0px !important; /* 縮小間距 */
+        margin-bottom: 2px !important; /* 縮小間距 */
+        line-height: 1.1 !important;
         height: auto !important;
         min-height: 0px !important;
     }}
@@ -251,7 +252,7 @@ st.markdown(f"""
     
     /* 縮減上方留白 */
     .block-container {{
-        padding-top: 1rem;
+        padding-top: 3rem;
         padding-bottom: 2rem;
     }}
     
@@ -557,7 +558,7 @@ with tab1:
 
     # --- 檢視模式切換 ---
     if 'view_mode_radio' not in st.session_state:
-        st.session_state.view_mode_radio = "📋 列表模式"
+        st.session_state.view_mode_radio = "🗓️ 日曆模式" # 預設日曆
         
     view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed", key="view_mode_radio")
     st.write("") 
@@ -639,7 +640,7 @@ with tab1:
 
     else:
         # --- 列表模式 ---
-        # 重要：初始化 display_data，防止 NameError
+        # 修正：先初始化 display_data
         display_data = []
 
         col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
@@ -743,12 +744,13 @@ with tab1:
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
-                    # Delete (Index 11)
+                    # Delete (Index 11) - Confirmed 12 cols
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
                     # 詳細數據展開區
                     expander_label = "📉 詳細數據"
+                    # Threads 若缺資料，外層顯示紅字鈴鐺
                     if p['platform'] == 'Threads' and (show_bell_7 or show_bell_30):
                          expander_label = "📉 詳細數據 :red[🔔 缺資料]" 
 
