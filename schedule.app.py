@@ -80,7 +80,10 @@ def save_standards(standards):
         json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    """判斷是否不需要填寫成效"""
+    """
+    判斷是否不需要填寫成效。
+    注意：Threads 需要填寫數據，所以不包含在這裡。
+    """
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
@@ -192,7 +195,7 @@ st.markdown("""
     
     .overdue-alert { color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }
     
-    /* 平台標籤樣式 */
+    /* 平台標籤樣式 (加大、醒目) */
     .platform-badge {
         font-weight: 900;
         padding: 4px 10px;
@@ -210,19 +213,19 @@ st.markdown("""
     .pf-yt { background-color: #ef4444; }
     .pf-threads { background-color: #000000; }
     
-    /* 列表行樣式 */
+    /* 列表行樣式 (加大間距、邊框) */
     .post-row {
         background-color: white;
         border: 1px solid #e5e7eb;
         border-radius: 10px;
-        padding: 15px 0;
-        margin-bottom: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        padding: 20px 0; /* 加大內距 */
+        margin-bottom: 20px; /* 加大行距 */
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         transition: transform 0.1s;
     }
     .post-row:hover {
         border-color: #d1d5db;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        box-shadow: 0 5px 10px rgba(0,0,0,0.05);
     }
     
     /* 今日高亮樣式 */
@@ -230,21 +233,23 @@ st.markdown("""
         background-color: #fffbeb;
         border: 2px solid #fcd34d;
         border-radius: 10px;
-        padding: 15px 0;
-        margin-bottom: 12px;
+        padding: 20px 0;
+        margin-bottom: 20px;
         position: relative;
+        box-shadow: 0 4px 10px rgba(252, 211, 77, 0.2);
     }
     .today-highlight::before {
         content: "✨ 今日貼文";
         position: absolute;
-        top: -10px;
+        top: -12px;
         left: 20px;
         background: #fcd34d;
         color: #92400e;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 0.75em;
+        padding: 4px 12px;
+        border-radius: 12px;
+        font-size: 0.8em;
         font-weight: bold;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
 
     .row-text-lg { font-size: 1.1em; font-weight: bold; color: #374151; }
@@ -261,10 +266,7 @@ st.markdown("""
 with st.sidebar:
     st.title("🔎 篩選條件")
     filter_platform = st.selectbox("平台", ["All"] + PLATFORMS, index=0)
-    
-    # 修改：新增「負責人」篩選
     filter_owner = st.selectbox("負責人", ["All"] + POST_OWNERS, index=0)
-    
     filter_post_type = st.selectbox("貼文類型", ["All"] + MAIN_POST_TYPES, index=0)
     filter_purpose = st.selectbox("目的", ["All"] + POST_PURPOSES, index=0)
     filter_format = st.selectbox("形式", ["All"] + POST_FORMATS, index=0)
@@ -488,11 +490,8 @@ with tab1:
     
     if filter_platform != "All":
         filtered_posts = [p for p in filtered_posts if p['platform'] == filter_platform]
-    
-    # 負責人篩選邏輯 (新功能)
     if filter_owner != "All":
         filtered_posts = [p for p in filtered_posts if p['postOwner'] == filter_owner]
-
     if filter_topic_keyword:
         filtered_posts = [p for p in filtered_posts if filter_topic_keyword.lower() in p['topic'].lower()]
     if filter_post_type != "All":
@@ -567,7 +566,7 @@ with tab1:
         with col_sort1:
             sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型"], index=0)
         with col_sort2:
-            # 修改：預設為 升序 (舊->新)
+            # 預設升序
             sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0)
 
         key_map = { "日期": "date", "平台": "platform", "主題": "topic", "貼文類型": "postType" }
@@ -581,7 +580,7 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            # 修改：表頭文字
+            # columns 12
             col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             
@@ -608,7 +607,8 @@ with tab1:
                     eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
                     reach = safe_num(metrics.get('reach', 0))
                     rate_str = "-"
-                    # Threads 不計算互動率
+                    
+                    # 修改：Threads 強制顯示 "-" (不計算率)
                     if p['platform'] == 'Threads':
                         rate_str = "-"
                     elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
@@ -618,10 +618,16 @@ with tab1:
                     due_date = post_date + timedelta(days=days_offset)
                     is_due = False
                     
-                    # Threads 雖然要填數字，但不強制跳互動率鈴鐺 (因為它不看率)
+                    # 修改：Threads 雖然要填數字，但不強制跳互動率鈴鐺
                     if not is_metrics_disabled(p['platform'], p['postFormat']) and p['platform'] != 'Threads':
                         if today_date_obj >= due_date and reach == 0:
                             is_due = True
+                    # Threads 如果要填數字但沒填，是否要有鈴鐺？ 題目說「一樣要有提示」，但「不需計算互動率」
+                    # 如果「不需計算互動率」，那鈴鐺掛在互動率欄位有點怪，但這是目前唯一的警告位置。
+                    # 照題目「一樣要有提示」，我們保留 Threads 的鈴鐺提示，但數值顯示 -
+                    if p['platform'] == 'Threads' and today_date_obj >= due_date and reach == 0:
+                         is_due = True
+
                     return rate_str, is_due, int(reach), int(eng)
 
                 rate7, overdue7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
@@ -651,16 +657,10 @@ with tab1:
                     st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
                     cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
-                    # 日期
                     cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
-
-                    # 平台
                     pf_cls = pf_class_map.get(p['platform'], 'pf-fb')
                     cols[1].markdown(f"<span class='platform-badge {pf_cls}'>{ICONS.get(p['platform'],'')} {p['platform']}</span>", unsafe_allow_html=True)
-                    
-                    # 主題
                     cols[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
-                    
                     cols[3].write(f"{p['postType']}")
                     cols[4].write(p['postPurpose']) 
                     cols[5].write(p['postFormat']) 
@@ -831,7 +831,6 @@ with tab2:
         
         df_dist = pd.DataFrame(data_for_dist)
         pivot_df = pd.crosstab(df_dist['Platform'], df_dist['Type'], margins=True, margins_name="總計")
-        
         existing_platforms = [p for p in PLATFORMS if p in pivot_df.index]
         final_index = [x for x in existing_platforms] + ["總計"]
         final_index = [x for x in final_index if x in pivot_df.index]
