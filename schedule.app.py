@@ -41,7 +41,7 @@ ICONS = {
     'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
 }
 
-# 平台顏色對照 (全域定義 - 日曆與列表共用)
+# 平台顏色對照 (全域定義)
 PLATFORM_COLORS = {
     'Facebook': '#1877F2',   # FB Blue
     'Instagram': '#E1306C',  # IG Pink
@@ -51,12 +51,12 @@ PLATFORM_COLORS = {
     '社團': '#F97316'        # Community Orange
 }
 
-# 平台隱藏標記 (用於 CSS 選擇器識別平台)
+# 平台隱藏標記 (用於 CSS 選擇器識別平台，實現日曆色塊)
 PLATFORM_MARKS = {
     'Facebook': '🟦', 
-    'Instagram': '🟥', 
+    'Instagram': '🟪', 
     'LINE@': '🟩', 
-    'YouTube': '🟫', 
+    'YouTube': '🟥', 
     'Threads': '⬛', 
     '社團': '🟧'
 }
@@ -220,14 +220,13 @@ calendar_button_css = ""
 for pf, mark in PLATFORM_MARKS.items():
     color = PLATFORM_COLORS.get(pf, '#888')
     # 使用 aria-label^="mark" 選擇器來變色
-    # 我們會在按鈕文字前加上這個 mark
     calendar_button_css += f"""
     div[data-testid="stButton"] button[aria-label^="{mark}"] {{
         background-color: {color} !important;
         color: white !important;
         border: none !important;
-        font-size: 0.8em !important; /* 字體再縮小 */
-        padding: 2px 6px !important; /* 內距縮小 */
+        font-size: 0.8em !important;
+        padding: 2px 6px !important;
         border-radius: 4px !important;
         width: 100% !important;
         text-align: left !important;
@@ -366,7 +365,7 @@ with tab1:
                         var top = window.parent.document.getElementById('edit_top');
                         if (top) { top.scrollIntoView({behavior: 'smooth', block: 'start'}); }
                     } catch (e) { console.log(e); }
-                }, 150);
+                }, 100);
             </script>
             """,
             height=0
@@ -620,18 +619,27 @@ with tab1:
                             day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
                             
                             for p in day_posts:
-                                # 使用色塊 + 標題 (隱藏文字名稱，只顯示色塊與主題)
-                                # mark 會觸發 CSS 變色
-                                mark = PLATFORM_MARKS.get(p['platform'], '🟦') 
-                                label = f"{mark} {p['topic'][:5]}.."
+                                # 檢查鈴鐺
+                                show_bell = False
+                                if not is_metrics_disabled(p['platform'], p['postFormat']):
+                                    p_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
+                                    if datetime.now().date() >= (p_date + timedelta(days=7)):
+                                        if safe_num(p.get('metrics7d', {}).get('reach', 0)) == 0:
+                                            show_bell = True
                                 
-                                # 日曆點擊：觸發 go_to_post_from_calendar
+                                # 使用色塊 + 標題
+                                mark = PLATFORM_MARKS.get(p['platform'], '🟦')
+                                bell_icon = "🔔" if show_bell else ""
+                                topic_limit = 4 if show_bell else 5
+                                label = f"{mark} {bell_icon}{p['topic'][:topic_limit]}.."
+                                
+                                # 日曆點擊
                                 if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}", on_click=go_to_post_from_calendar, args=(p['id'],)):
                                     pass
 
     else:
         # --- 列表模式 ---
-        # 修正：先初始化 display_data (防止 NameError)
+        # 重要：初始化 display_data，防止 NameError
         display_data = []
 
         col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
@@ -735,13 +743,12 @@ with tab1:
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
-                    # Delete (Index 11) - Confirmed 12 cols
+                    # Delete (Index 11)
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
                     # 詳細數據展開區
                     expander_label = "📉 詳細數據"
-                    # Threads 若缺資料，外層顯示紅字鈴鐺
                     if p['platform'] == 'Threads' and (show_bell_7 or show_bell_30):
                          expander_label = "📉 詳細數據 :red[🔔 缺資料]" 
 
