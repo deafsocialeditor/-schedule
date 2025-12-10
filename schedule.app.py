@@ -54,9 +54,9 @@ PLATFORM_COLORS = {
 # 平台隱藏標記 (用於 CSS 選擇器識別平台)
 PLATFORM_MARKS = {
     'Facebook': '🟦', 
-    'Instagram': '🟪', 
+    'Instagram': '🟥', 
     'LINE@': '🟩', 
-    'YouTube': '🟥', 
+    'YouTube': '🟫', 
     'Threads': '⬛', 
     '社團': '🟧'
 }
