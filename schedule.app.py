@@ -41,14 +41,24 @@ ICONS = {
     'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
 }
 
-# 平台顏色對照 (全域定義)
+# 平台顏色對照 (全域定義 - 日曆與列表共用)
 PLATFORM_COLORS = {
-    'Facebook': '#3b82f6',   # 藍
-    'Instagram': '#ec4899',  # 粉
-    'LINE@': '#22c55e',      # 綠
-    'YouTube': '#ef4444',    # 紅
-    'Threads': '#000000',    # 黑
-    '社團': '#d97706'        # 橘
+    'Facebook': '#1877F2',   # FB Blue
+    'Instagram': '#E1306C',  # IG Pink
+    'LINE@': '#06C755',      # LINE Green
+    'YouTube': '#FF0000',    # YT Red
+    'Threads': '#101010',    # Threads Black
+    '社團': '#F97316'        # Community Orange
+}
+
+# 平台隱藏標記 (用於 CSS 選擇器識別平台)
+PLATFORM_MARKS = {
+    'Facebook': '🟦', 
+    'Instagram': '🟪', 
+    'LINE@': '🟩', 
+    'YouTube': '🟥', 
+    'Threads': '⬛', 
+    '社團': '🟧'
 }
 
 # --- 2. 資料處理函式 ---
@@ -206,22 +216,33 @@ if 'scroll_to_list_item' not in st.session_state:
 
 # --- 4. 自訂 CSS (視覺優化：緊湊 + 平台顏色) ---
 # 自動生成按鈕顏色的 CSS
-button_css = ""
-for pf, color in PLATFORM_COLORS.items():
-    # 使用 aria-label 前綴比對技巧
-    button_css += f"""
-    div[data-testid="stButton"] button[aria-label^="{pf}"] {{
+calendar_button_css = ""
+for pf, mark in PLATFORM_MARKS.items():
+    color = PLATFORM_COLORS.get(pf, '#888')
+    # 使用 aria-label^="mark" 選擇器來變色
+    # 我們會在按鈕文字前加上這個 mark
+    calendar_button_css += f"""
+    div[data-testid="stButton"] button[aria-label^="{mark}"] {{
         background-color: {color} !important;
         color: white !important;
         border: none !important;
-        font-size: 0.8em !important;
-        padding: 4px 8px !important;
+        font-size: 0.8em !important; /* 字體再縮小 */
+        padding: 2px 6px !important; /* 內距縮小 */
         border-radius: 4px !important;
         width: 100% !important;
+        text-align: left !important;
         white-space: nowrap !important;
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         display: block !important;
+        margin-top: 1px !important;
+        line-height: 1.2 !important;
+        height: auto !important;
+        min-height: 0px !important;
+    }}
+    div[data-testid="stButton"] button[aria-label^="{mark}"]:hover {{
+        filter: brightness(0.9);
+        color: white !important;
     }}
     """
 
@@ -258,54 +279,35 @@ st.markdown(f"""
         margin-bottom: 2px;
     }}
     
-    /* 列表行樣式 (卡片式回歸：白底、陰影、邊框) */
+    /* 列表行樣式 (瘦身版：僅底線，間距縮小) */
     .post-row {{
-        background-color: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 12px 5px; /* 緊湊內距 */
-        margin-bottom: 10px; /* 緊湊行距 */
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        transition: transform 0.1s;
+        background-color: transparent;
+        border-bottom: 1px solid #f3f4f6; 
+        padding: 8px 0; 
+        margin-bottom: 0;
+        transition: background-color 0.2s;
     }}
     .post-row:hover {{
-        border-color: #d1d5db;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.08);
+        background-color: #f9fafb;
     }}
     
     /* 今日高亮樣式 */
     .today-highlight {{
         background-color: #fffbeb;
-        border: 2px solid #fcd34d;
-        border-radius: 8px;
-        padding: 12px 5px;
-        margin-bottom: 10px;
+        border-bottom: 2px solid #fcd34d;
+        padding: 8px 0;
         position: relative;
-    }}
-    .today-highlight::before {{
-        content: "✨ 今日";
-        position: absolute;
-        top: -8px;
-        left: 10px;
-        background: #fcd34d;
-        color: #92400e;
-        padding: 0px 6px;
-        border-radius: 4px;
-        font-size: 0.7em;
-        font-weight: bold;
     }}
     
     /* 滾動定位高亮 */
     @keyframes highlight-fade {{
-        0% {{ background-color: #fef08a; border: 2px solid #3b82f6; }}
-        100% {{ background-color: white; border: 1px solid #e5e7eb; }}
+        0% {{ background-color: #fef08a; }}
+        100% {{ background-color: transparent; }}
     }}
     .scroll-highlight {{
         animation: highlight-fade 2s ease-out;
-        border-radius: 8px;
-        padding: 12px 5px;
-        margin-bottom: 10px;
-        box-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        border-bottom: 2px solid #3b82f6 !important;
+        padding: 8px 0;
     }}
     
     .row-text-lg {{ font-size: 1.05em; font-weight: bold; color: #1f2937; }}
@@ -317,7 +319,7 @@ st.markdown(f"""
     .cal-day-num {{ font-weight: bold; font-size: 0.9em; color: #374151; margin-bottom: 2px; margin-left: 2px; }}
     
     /* 注入按鈕顏色樣式 */
-    {button_css}
+    {calendar_button_css}
     </style>
 """, unsafe_allow_html=True)
 
@@ -618,14 +620,18 @@ with tab1:
                             day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
                             
                             for p in day_posts:
-                                # 按鈕標籤：平台 - 主題 (使用 CSS 變色)
-                                label = f"{p['platform']} - {p['topic'][:5]}.."
+                                # 使用色塊 + 標題 (隱藏文字名稱，只顯示色塊與主題)
+                                # mark 會觸發 CSS 變色
+                                mark = PLATFORM_MARKS.get(p['platform'], '🟦') 
+                                label = f"{mark} {p['topic'][:5]}.."
+                                
+                                # 日曆點擊：觸發 go_to_post_from_calendar
                                 if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}", on_click=go_to_post_from_calendar, args=(p['id'],)):
                                     pass
 
     else:
         # --- 列表模式 ---
-        # 修正：先初始化 display_data
+        # 修正：先初始化 display_data (防止 NameError)
         display_data = []
 
         col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
@@ -735,6 +741,7 @@ with tab1:
 
                     # 詳細數據展開區
                     expander_label = "📉 詳細數據"
+                    # Threads 若缺資料，外層顯示紅字鈴鐺
                     if p['platform'] == 'Threads' and (show_bell_7 or show_bell_30):
                          expander_label = "📉 詳細數據 :red[🔔 缺資料]" 
 
