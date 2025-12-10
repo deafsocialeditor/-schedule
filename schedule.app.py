@@ -82,7 +82,10 @@ def save_standards(standards):
         json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    """判斷是否不需要填寫成效 (Threads 需要填寫，故移除)"""
+    """
+    判斷是否不需要填寫成效。
+    注意：Threads 需要填寫數據，所以不包含在這裡。
+    """
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
@@ -137,6 +140,10 @@ def edit_post_callback(post):
     st.session_state.editing_post = post
     st.session_state.scroll_to_top = True
     
+    # 如果是從日曆點擊，切換回列表模式
+    if st.session_state.get('view_mode_radio') == "🗓️ 日曆模式":
+         st.session_state['view_mode_radio'] = "📋 列表模式"
+
     try:
         st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
     except:
@@ -299,20 +306,16 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # --- 自動滾動到頂部 (JavaScript 強制版) ---
+    # --- 自動滾動 (使用 setTimeout 確保渲染後執行) ---
     if st.session_state.scroll_to_top:
         components.html(
             """
             <script>
-                try {
-                    window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
-                } catch (e) {
+                setTimeout(function() {
                     try {
-                        window.parent.scrollTo(0, 0);
-                    } catch (e2) {
-                        console.log("Scroll attempt failed");
-                    }
-                }
+                        window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
+                    } catch (e) { console.log(e); }
+                }, 150);
             </script>
             """,
             height=0
@@ -485,7 +488,11 @@ with tab1:
                 st.rerun()
 
     # --- 檢視模式切換 ---
-    view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed")
+    # 使用 session_state key 確保狀態同步
+    if 'view_mode_radio' not in st.session_state:
+        st.session_state.view_mode_radio = "📋 列表模式"
+        
+    view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed", key="view_mode_radio")
     st.write("") 
 
     # --- 列表顯示邏輯 ---
@@ -550,23 +557,10 @@ with tab1:
                             day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
                             
                             for p in day_posts:
-                                p_color = platform_colors.get(p['platform'], '#6b7280')
-                                st.markdown(f"""
-                                    <div style="
-                                        background-color: {p_color};
-                                        color: white;
-                                        padding: 4px 6px;
-                                        margin-bottom: 4px;
-                                        border-radius: 4px;
-                                        font-size: 0.85em;
-                                        white-space: nowrap;
-                                        overflow: hidden;
-                                        text-overflow: ellipsis;
-                                        cursor: default;
-                                    " title="{p['platform']} - {p['topic']}">
-                                        {ICONS.get(p['platform'],'')} {p['topic']}
-                                    </div>
-                                """, unsafe_allow_html=True)
+                                label = f"{ICONS.get(p['platform'],'')} {p['topic'][:6]}.."
+                                if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}"):
+                                    edit_post_callback(p)
+                                    st.rerun()
 
     else:
         # --- 列表模式 ---
@@ -574,7 +568,6 @@ with tab1:
         with col_sort1:
             sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型"], index=0)
         with col_sort2:
-            # 修改：預設為 升序 (舊->新)
             sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0)
 
         key_map = { "日期": "date", "平台": "platform", "主題": "topic", "貼文類型": "postType" }
@@ -588,8 +581,8 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            # 欄位數量：12
-            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+            # 修改：columns 數量 12
+            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             
             for col, h in zip(col_list, headers):
@@ -659,19 +652,15 @@ with tab1:
                 
                 with st.container():
                     st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
-                    # 12 Columns definition
+                    # 12 columns
                     cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
-                    # 日期
                     cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
-
-                    # 平台 (使用 Badge)
+                    
                     pf_cls = pf_class_map.get(p['platform'], 'pf-fb')
                     cols[1].markdown(f"<span class='platform-badge {pf_cls}'>{ICONS.get(p['platform'],'')} {p['platform']}</span>", unsafe_allow_html=True)
                     
-                    # 主題 (加大)
                     cols[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
-                    
                     cols[3].write(f"{p['postType']}")
                     cols[4].write(p['postPurpose']) 
                     cols[5].write(p['postFormat']) 
@@ -691,18 +680,28 @@ with tab1:
                         
                     cols[9].write(f"{p['postOwner']}")
 
+                    # Edit
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
+                    # Delete (Now valid because cols has 12 items)
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
                     # 詳細數據展開區 (Threads 鈴鐺強調)
-                    with st.expander(f"📉 詳細數據"):
+                    # 如果是 Threads 且逾期，在 expander label 上加鈴鐺 (如需求)
+                    # 但 Streamlit expander label 不支援 rich text。
+                    # 所以我們改為：expander 內部標題加鈴鐺
+                    
+                    expander_label = "📉 詳細數據"
+                    if p['platform'] == 'Threads' and (show_bell_7 or show_bell_30):
+                        expander_label = "📉 詳細數據 🔔 (缺資料)"
+
+                    with st.expander(expander_label):
                         r_label = "瀏覽" if p['platform'] == 'Threads' else "觸及"
                         d_c1, d_c2, d_c3, d_c4 = st.columns(4)
                         
-                        # 如果是 Threads 且逾期，數值標題加鈴鐺
+                        # 內部數值提示
                         warn7 = "🔔 " if (show_bell_7 and p['platform'] == 'Threads') else ""
                         warn30 = "🔔 " if (show_bell_30 and p['platform'] == 'Threads') else ""
 
