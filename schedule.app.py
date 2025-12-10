@@ -1,10 +1,9 @@
 import streamlit as st
+import streamlit.components.v1 as components  # 新增：用於執行 JavaScript 滾動
 import pandas as pd
 import json
 import os
 import uuid
-import calendar
-import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
@@ -26,9 +25,9 @@ SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
 
-# 專案負責人 (修正錯字：凱曜 -> 楷曜)
+# 專案負責人
 PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
-POST_OWNERS = ['一千', '楷曜', '可榆'] 
+POST_OWNERS = ['一千', '凱曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
 
 # 定義廣告類型的目的
@@ -80,8 +79,8 @@ def save_standards(standards):
         json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    """判斷是否不需要填寫成效 (修正：Threads 也不需要填寫)"""
-    return platform in ['LINE@', 'Threads'] or fmt in ['限動', '留言處']
+    """判斷是否不需要填寫成效"""
+    return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
     try:
@@ -118,6 +117,9 @@ def get_performance_label(platform, metrics, fmt, standards):
     elif platform == 'YouTube':
         if reach >= std['reach'] and rate >= std['rate']: return "✅ 達標", "green"
         return "🔴 未達標", "red"
+    elif platform == 'Threads':
+        if reach >= std['reach']: return "🔥 超標竿", "purple"
+        return "-", "gray"
     
     return "-", "gray"
 
@@ -125,8 +127,11 @@ def get_performance_label(platform, metrics, fmt, standards):
 def edit_post_callback(post):
     """點擊編輯按鈕時觸發"""
     st.session_state.editing_post = post
+    
+    # 設定滾動標記 -> True，讓頁面重新整理後執行 JS
     st.session_state.scroll_to_top = True
     
+    # 預填表單 (使用 session state key)
     try:
         st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
     except:
@@ -171,87 +176,34 @@ if 'standards' not in st.session_state:
     st.session_state.standards = load_standards()
 if 'editing_post' not in st.session_state:
     st.session_state.editing_post = None
+    
+# 初始化滾動標記
 if 'scroll_to_top' not in st.session_state:
     st.session_state.scroll_to_top = False
 
-# --- 4. 自訂 CSS (優化間距與視覺) ---
+# --- 4. 自訂 CSS ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
-    
-    /* KPI 標籤 */
-    .kpi-badge { padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 0.85em; display: inline-block; min-width: 60px; text-align: center;}
+    div[data-testid="stMetricValue"] { font-size: 24px; color: #4b5563; }
+    .kpi-badge { padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
     .purple { background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }
     .green { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
     .orange { background-color: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }
     .red { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
-    .gray { background-color: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }
-    
+    .gray { background-color: #f3f4f6; color: #9ca3af; }
     .overdue-alert { color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }
     
-    /* 平台標籤樣式 (加大、醒目) */
-    .platform-badge {
-        font-weight: 900;
-        padding: 4px 10px;
-        border-radius: 6px;
-        color: white;
-        font-size: 1.1em; /* 加大字體 */
-        display: inline-block;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-        width: 100%; /* 填滿欄位 */
-        text-align: center;
-    }
-    .pf-fb { background-color: #3b82f6; }
-    .pf-ig { background-color: #ec4899; }
-    .pf-line { background-color: #22c55e; }
-    .pf-yt { background-color: #ef4444; }
-    .pf-threads { background-color: #000000; }
-    
-    /* 列表行樣式 (加大間距、邊框) */
-    .post-row {
-        background-color: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        padding: 15px 0; /* 加大上下內距 */
-        margin-bottom: 12px; /* 加大行間距 */
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-        transition: transform 0.1s;
-    }
-    .post-row:hover {
-        border-color: #d1d5db;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-    }
-    
-    /* 今日高亮樣式 */
     .today-highlight {
-        background-color: #fffbeb; /* 淺黃底 */
+        background-color: #fef9c3;
+        color: #b45309;
+        padding: 5px 10px;
+        border-radius: 8px;
+        font-weight: 900;
         border: 2px solid #fcd34d;
-        border-radius: 10px;
-        padding: 15px 0;
-        margin-bottom: 12px;
-        position: relative;
+        display: inline-block;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    .today-highlight::before {
-        content: "✨ 今日貼文";
-        position: absolute;
-        top: -10px;
-        left: 20px;
-        background: #fcd34d;
-        color: #92400e;
-        padding: 2px 8px;
-        border-radius: 10px;
-        font-size: 0.75em;
-        font-weight: bold;
-    }
-
-    /* 字體加大 */
-    .row-text-lg { font-size: 1.1em; font-weight: bold; color: #374151; }
-    .row-text-md { font-size: 1em; color: #4b5563; }
-    
-    /* 日曆樣式 */
-    .cal-day-header { text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 5px; }
-    .cal-day-cell { min-height: 100px; padding: 5px; border-radius: 8px; font-size: 0.8em; }
-    .cal-day-num { font-weight: bold; font-size: 1.1em; color: #374151; margin-bottom: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -259,7 +211,6 @@ st.markdown("""
 with st.sidebar:
     st.title("🔎 篩選條件")
     filter_platform = st.selectbox("平台", ["All"] + PLATFORMS, index=0)
-    filter_owner = st.selectbox("負責人", ["All"] + POST_OWNERS, index=0)
     filter_post_type = st.selectbox("貼文類型", ["All"] + MAIN_POST_TYPES, index=0)
     filter_purpose = st.selectbox("目的", ["All"] + POST_PURPOSES, index=0)
     filter_format = st.selectbox("形式", ["All"] + POST_FORMATS, index=0)
@@ -285,24 +236,18 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
+    # --- 新增：自動滾動到頂部 (JavaScript) ---
     if st.session_state.scroll_to_top:
         components.html(
             """
             <script>
-                try {
-                    window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
-                } catch (e) {
-                    try {
-                        window.parent.scrollTo(0, 0);
-                    } catch (e2) {
-                        console.log("Scroll attempt failed");
-                    }
-                }
+                // 嘗試滾動父層視窗 (Streamlit 主內容區域)
+                window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
             </script>
             """,
             height=0
         )
-        st.session_state.scroll_to_top = False
+        st.session_state.scroll_to_top = False # 重置標記
 
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
@@ -316,9 +261,9 @@ with tab1:
         if 'entry_type' not in st.session_state: st.session_state['entry_type'] = MAIN_POST_TYPES[0]
         if 'entry_subtype' not in st.session_state: st.session_state['entry_subtype'] = "-- 無 --"
         if 'entry_purpose' not in st.session_state: st.session_state['entry_purpose'] = POST_PURPOSES[0]
-        if 'entry_format' not in st.session_state: st.session_state['entry_format'] = ""
+        if 'entry_format' not in st.session_state: st.session_state['entry_format'] = POST_FORMATS[0]
         if 'entry_po' not in st.session_state: st.session_state['entry_po'] = ""
-        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = ""
+        if 'entry_owner' not in st.session_state: st.session_state['entry_owner'] = POST_OWNERS[0]
         if 'entry_designer' not in st.session_state: st.session_state['entry_designer'] = ""
         
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares',
@@ -354,11 +299,11 @@ with tab1:
                 for p in selected_platforms:
                     platform_purposes[p] = single_purpose
 
-        f_format = c8.selectbox("形式", [""] + POST_FORMATS, key="entry_format")
+        f_format = c8.selectbox("形式", POST_FORMATS, key="entry_format")
 
         c9, c10, c11 = st.columns(3)
         f_po = c9.selectbox("專案負責人", [""] + PROJECT_OWNERS, key="entry_po")
-        f_owner = c10.selectbox("貼文負責人", [""] + POST_OWNERS, key="entry_owner")
+        f_owner = c10.selectbox("貼文負責人", POST_OWNERS, key="entry_owner")
         f_designer = c11.selectbox("美編", [""] + DESIGNERS, key="entry_designer")
 
         st.divider()
@@ -378,12 +323,12 @@ with tab1:
 
         if not hide_metrics:
             st.caption("數據填寫")
-            # Threads 也不需要填寫，所以這裡不需要特殊 label，直接隱藏
+            reach_label = "瀏覽數" if current_platform == 'Threads' else "觸及數"
             
             m_cols = st.columns(2)
             with m_cols[0]:
                 st.markdown(f"##### 🔥 7天成效 <span style='font-size:0.7em; color:#ef4444; background:#fee2e2; padding:2px 6px; border-radius:4px;'>預計: {due_date_7d.strftime('%m/%d')}</span>", unsafe_allow_html=True)
-                metrics_input['metrics7d']['reach'] = st.number_input(f"7天-觸及", step=1, key="entry_m7_reach")
+                metrics_input['metrics7d']['reach'] = st.number_input(f"7天-{reach_label}", step=1, key="entry_m7_reach")
                 metrics_input['metrics7d']['likes'] = st.number_input("7天-按讚", step=1, key="entry_m7_likes")
                 sub_c1, sub_c2 = st.columns(2)
                 metrics_input['metrics7d']['comments'] = sub_c1.number_input("7天-留言", step=1, key="entry_m7_comments")
@@ -391,7 +336,7 @@ with tab1:
 
             with m_cols[1]:
                 st.markdown(f"##### 🌳 一個月成效 <span style='font-size:0.7em; color:#a855f7; background:#f3e8ff; padding:2px 6px; border-radius:4px;'>預計: {due_date_1m.strftime('%m/%d')}</span>", unsafe_allow_html=True)
-                metrics_input['metrics1m']['reach'] = st.number_input(f"1月-觸及", step=1, key="entry_m1_reach")
+                metrics_input['metrics1m']['reach'] = st.number_input(f"1月-{reach_label}", step=1, key="entry_m1_reach")
                 metrics_input['metrics1m']['likes'] = st.number_input("1月-按讚", step=1, key="entry_m1_likes")
                 sub_c3, sub_c4 = st.columns(2)
                 metrics_input['metrics1m']['comments'] = sub_c3.number_input("1月-留言", step=1, key="entry_m1_comments")
@@ -469,10 +414,6 @@ with tab1:
                     del st.session_state[key]
                 st.rerun()
 
-    # --- 檢視模式切換 ---
-    view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed")
-    st.write("") 
-
     # --- 列表顯示邏輯 ---
     filtered_posts = st.session_state.posts
     
@@ -483,8 +424,6 @@ with tab1:
     
     if filter_platform != "All":
         filtered_posts = [p for p in filtered_posts if p['platform'] == filter_platform]
-    if filter_owner != "All":
-        filtered_posts = [p for p in filtered_posts if p['postOwner'] == filter_owner]
     if filter_topic_keyword:
         filtered_posts = [p for p in filtered_posts if filter_topic_keyword.lower() in p['topic'].lower()]
     if filter_post_type != "All":
@@ -494,210 +433,137 @@ with tab1:
     if filter_format != "All":
         filtered_posts = [p for p in filtered_posts if p['postFormat'] == filter_format]
 
-    if view_mode == "🗓️ 日曆模式":
-        # ... (日曆模式代碼維持不變，篇幅關係省略，功能已包含在完整代碼中) ...
-        # 為了完整性，這裡重寫日曆部分
-        if date_filter_type == "月":
-            year_str, month_str = selected_month.split("-")
-            cal_year, cal_month = int(year_str), int(month_str)
-        else:
-            cal_year, cal_month = start_date.year, start_date.month
+    col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
+    with col_sort1:
+        sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型"], index=0)
+    with col_sort2:
+        sort_order = st.selectbox("順序", ["降序 (新->舊)", "升序 (舊->新)"], index=0)
 
-        st.markdown(f"### 🗓️ {cal_year} 年 {cal_month} 月")
+    key_map = { "日期": "date", "平台": "platform", "主題": "topic", "貼文類型": "postType" }
+    reverse_sort = True if "降序" in sort_order else False
+    filtered_posts.sort(key=lambda x: x[key_map[sort_by]], reverse=reverse_sort)
 
-        cal = calendar.monthcalendar(cal_year, cal_month)
-        cols = st.columns(7)
-        weekdays = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
-        for i, day_name in enumerate(weekdays):
-            cols[i].markdown(f"<div class='cal-day-header'>{day_name}</div>", unsafe_allow_html=True)
+    with col_count:
+        st.write("")
+        st.markdown(f"**共篩選出 {len(filtered_posts)} 筆資料**")
 
-        platform_colors = {
-            'Facebook': '#3b82f6', 'Instagram': '#ec4899', 'LINE@': '#22c55e',
-            'YouTube': '#ef4444', 'Threads': '#000000'
-        }
+    st.divider()
 
-        for week in cal:
-            cols = st.columns(7)
-            for i, day in enumerate(week):
-                with cols[i]:
-                    if day == 0:
-                        st.markdown("<div class='cal-day-cell' style='background-color:#f9fafb;'></div>", unsafe_allow_html=True)
-                    else:
-                        current_date_str = f"{cal_year}-{cal_month:02d}-{day:02d}"
-                        is_today_cal = (current_date_str == datetime.now().strftime("%Y-%m-%d"))
-                        bg_style = "background-color:#fef9c3; border:2px solid #fcd34d;" if is_today_cal else "background-color:white; border:1px solid #e5e7eb;"
-                        
-                        with st.container():
-                            st.markdown(f"""
-                                <div class='cal-day-cell' style='{bg_style}'>
-                                    <div class='cal-day-num'>{day}</div>
-                                </div>
-                            """, unsafe_allow_html=True)
-                            
-                            day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
-                            
-                            for p in day_posts:
-                                p_color = platform_colors.get(p['platform'], '#6b7280')
-                                st.markdown(f"""
-                                    <div style="
-                                        background-color: {p_color};
-                                        color: white;
-                                        padding: 4px 6px;
-                                        margin-bottom: 4px;
-                                        border-radius: 4px;
-                                        font-size: 0.85em;
-                                        white-space: nowrap;
-                                        overflow: hidden;
-                                        text-overflow: ellipsis;
-                                        cursor: default;
-                                    " title="{p['platform']} - {p['topic']}">
-                                        {ICONS.get(p['platform'],'')} {p['topic']}
-                                    </div>
-                                """, unsafe_allow_html=True)
+    if filtered_posts:
+        col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+        headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編", "刪"]
+        
+        for col, h in zip(col_list, headers):
+            col.markdown(f"**{h}**")
+        st.markdown("<hr style='margin: 0.5em 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
 
-    else:
-        # --- 列表模式 (修改重點) ---
-        col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
-        # 修改：預設 index=0 (升序)
-        with col_sort1:
-            sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型"], index=0)
-        with col_sort2:
-            sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_date_obj = datetime.now().date()
 
-        key_map = { "日期": "date", "平台": "platform", "主題": "topic", "貼文類型": "postType" }
-        reverse_sort = True if "降序" in sort_order else False
-        filtered_posts.sort(key=lambda x: x[key_map[sort_by]], reverse=reverse_sort)
+        display_data = []
 
-        with col_count:
-            st.write("")
-            st.markdown(f"**共篩選出 {len(filtered_posts)} 筆資料**")
+        for p in filtered_posts:
+            raw_p = p
+            label, color = get_performance_label(raw_p['platform'], raw_p.get('metrics7d'), raw_p['postFormat'], st.session_state.standards)
+            is_today = (p['date'] == today_str)
 
-        st.divider()
-
-        if filtered_posts:
-            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
-            headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
-            
-            for col, h in zip(col_list, headers):
-                col.markdown(f"**{h}**")
-            st.markdown("<hr style='margin: 0.5em 0; border-top: 1px dashed #ddd;'>", unsafe_allow_html=True)
-
-            today_str = datetime.now().strftime("%Y-%m-%d")
-            today_date_obj = datetime.now().date()
-
-            display_data = []
-            
-            # CSS Class Mapping for Platforms
-            pf_class_map = {
-                'Facebook': 'pf-fb', 'Instagram': 'pf-ig', 'LINE@': 'pf-line',
-                'YouTube': 'pf-yt', 'Threads': 'pf-threads'
-            }
-
-            for p in filtered_posts:
-                raw_p = p
-                label, color = get_performance_label(raw_p['platform'], raw_p.get('metrics7d'), raw_p['postFormat'], st.session_state.standards)
-                is_today = (p['date'] == today_str)
-
-                def calc_rate_and_check_due(metrics, days_offset):
-                    eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
-                    reach = safe_num(metrics.get('reach', 0))
-                    rate_str = "-"
-                    if p['platform'] == 'Threads':
-                        rate_str = "-"
-                    elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
-                        rate_str = f"{(eng/reach*100):.1f}%"
-                    
-                    post_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
-                    due_date = post_date + timedelta(days=days_offset)
-                    is_due = False
-                    
-                    if not is_metrics_disabled(p['platform'], p['postFormat']):
-                        if today_date_obj >= due_date and reach == 0:
-                            is_due = True
-                    return rate_str, is_due, int(reach), int(eng)
-
-                rate7, overdue7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
-                rate30, overdue30, r30, e30 = calc_rate_and_check_due(p.get('metrics1m', {}), 30)
-
-                display_data.append({
-                    'ID': p['id'],
-                    '日期': p['date'],
-                    '平台': p['platform'],
-                    '主題': p['topic'],
-                    '類型': p['postType'],
-                    '子類型': p.get('postSubType', ''),
-                    '目的': p['postPurpose'],
-                    '形式': p['postFormat'],
-                    'KPI': label,
-                    '7日互動率': rate7,
-                    '30日互動率': rate30,
-                    '7日觸及': r7, '7日互動': e7,
-                    '30日觸及': r30, '30日互動': e30,
-                    '負責人': p['postOwner'],
-                    '_raw': p 
-                })
-
-                # 使用自訂 CSS 類別包裹每一行
-                row_class = "today-highlight" if is_today else "post-row"
+            def calc_rate_and_check_due(metrics, days_offset):
+                eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
+                reach = safe_num(metrics.get('reach', 0))
                 
-                with st.container():
-                    st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
-                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
-                    
-                    # 日期
-                    cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
+                rate_str = "-"
+                if p['platform'] == 'Threads':
+                    rate_str = "-"
+                elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
+                    rate_str = f"{(eng/reach*100):.1f}%"
+                
+                post_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
+                due_date = post_date + timedelta(days=days_offset)
+                is_due = False
+                
+                if not is_metrics_disabled(p['platform'], p['postFormat']):
+                    if today_date_obj >= due_date and reach == 0:
+                        is_due = True
+                
+                return rate_str, is_due, int(reach), int(eng)
 
-                    # 平台 (使用 Badge)
-                    pf_cls = pf_class_map.get(p['platform'], 'pf-fb')
-                    cols[1].markdown(f"<span class='platform-badge {pf_cls}'>{ICONS.get(p['platform'],'')} {p['platform']}</span>", unsafe_allow_html=True)
-                    
-                    # 主題 (加大)
-                    cols[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
-                    
-                    cols[3].write(f"{p['postType']}")
-                    cols[4].write(p['postPurpose']) 
-                    cols[5].write(p['postFormat']) 
-                    cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
-                    
-                    if overdue7:
-                        cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
-                    else:
-                        cols[7].write(rate7)
+            rate7, overdue7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
+            rate30, overdue30, r30, e30 = calc_rate_and_check_due(p.get('metrics1m', {}), 30)
 
-                    if overdue30:
-                        cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
-                    else:
-                        cols[8].write(rate30)
-                        
-                    cols[9].write(f"{p['postOwner']}")
+            display_data.append({
+                'ID': p['id'],
+                '日期': p['date'],
+                '平台': p['platform'],
+                '主題': p['topic'],
+                '類型': p['postType'],
+                '子類型': p.get('postSubType', ''),
+                '目的': p['postPurpose'],
+                '形式': p['postFormat'],
+                'KPI': label,
+                '7日互動率': rate7,
+                '30日互動率': rate30,
+                '7日觸及': r7, '7日互動': e7,
+                '30日觸及': r30, '30日互動': e30,
+                '負責人': p['postOwner'],
+                '_raw': p 
+            })
 
-                    if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
-                        pass 
+            with st.container():
+                cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                
+                if is_today:
+                    cols[0].markdown(f"<div class='today-highlight'>✨ {p['date']}</div>", unsafe_allow_html=True)
+                else:
+                    cols[0].write(p['date'])
+
+                cols[1].write(f"{ICONS.get(p['platform'], '')} {p['platform']}")
+                cols[2].write(p['topic'])
+                cols[3].write(f"{p['postType']}")
+                cols[4].write(p['postPurpose']) 
+                cols[5].write(p['postFormat']) 
+                cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
+                
+                if overdue7:
+                    cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
+                else:
+                    cols[7].write(rate7)
+
+                if overdue30:
+                    cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
+                else:
+                    cols[8].write(rate30)
                     
-                    if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
-                        pass
+                cols[9].write(f"{p['postOwner']}")
 
-                    with st.expander(f"📉 詳細數據"):
-                        r_label = "瀏覽" if p['platform'] == 'Threads' else "觸及"
-                        d_c1, d_c2, d_c3, d_c4 = st.columns(4)
-                        d_c1.metric(f"7天-{r_label}", f"{r7:,}")
-                        d_c2.metric("7天-互動", f"{e7:,}")
-                        d_c3.metric(f"30天-{r_label}", f"{r30:,}")
-                        d_c4.metric("30天-互動", f"{e30:,}")
-                    
-                    st.markdown('</div>', unsafe_allow_html=True) # 結束 row div
+                if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
+                    pass 
+                
+                if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
+                    pass
 
-            if display_data:
-                df = pd.DataFrame(display_data)
-                if not df.empty:
-                    export_df = df.drop(columns=['_raw', 'ID'], errors='ignore')
-                    csv = export_df.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
-        else:
-            st.info("目前沒有符合條件的排程資料。")
+                with st.expander(f"📉 {p['topic']} - 詳細數據 (點擊展開)"):
+                    r_label = "瀏覽" if p['platform'] == 'Threads' else "觸及"
+                    d_c1, d_c2, d_c3, d_c4 = st.columns(4)
+                    d_c1.metric(f"7天-{r_label}", f"{r7:,}")
+                    d_c2.metric("7天-互動", f"{e7:,}")
+                    d_c3.metric(f"30天-{r_label}", f"{r30:,}")
+                    d_c4.metric("30天-互動", f"{e30:,}")
+
+            if is_today:
+                st.markdown("<hr style='margin: 0; border-top: 2px solid #fcd34d;'>", unsafe_allow_html=True)
+            else:
+                st.markdown("<hr style='margin: 0; border-top: 1px solid #f0f0f0;'>", unsafe_allow_html=True)
+
+        if display_data:
+            df = pd.DataFrame(display_data)
+            if not df.empty:
+                export_df = df.drop(columns=['_raw', 'ID'], errors='ignore')
+                csv = export_df.to_csv(index=False).encode('utf-8-sig')
+                st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
+    else:
+        st.info("目前沒有符合條件的排程資料。")
 
 # === TAB 2: 數據分析 ===
-# (數據分析部分保持不變)
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
