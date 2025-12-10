@@ -34,11 +34,14 @@ DESIGNERS = ['千惟', '靖嬙']
 # 定義廣告類型的目的
 AD_PURPOSE_LIST = ['廣告', '門市廣告']
 
-# Icon Mapping
-ICONS = {
-    'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵',
-    '社團': '👥',
-    'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
+# 平台顏色對照 (Hex)
+PLATFORM_COLORS = {
+    'Facebook': '#3b82f6',   # 藍
+    'Instagram': '#ec4899',  # 粉
+    'LINE@': '#22c55e',      # 綠
+    'YouTube': '#ef4444',    # 紅
+    'Threads': '#000000',    # 黑
+    '社團': '#d97706'        # 橘
 }
 
 # --- 2. 資料處理函式 ---
@@ -82,10 +85,7 @@ def save_standards(standards):
         json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    """
-    判斷是否不需要填寫成效。
-    注意：Threads 需要填寫數據，所以不包含在這裡。
-    """
+    """判斷是否不需要填寫成效 (Threads 需填寫，故排除)"""
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
@@ -138,7 +138,7 @@ def get_performance_label(platform, metrics, fmt, standards):
 def edit_post_callback(post):
     """點擊編輯按鈕時觸發"""
     st.session_state.editing_post = post
-    st.session_state.scroll_to_top = True
+    st.session_state.scroll_to_top = True # 觸發滾動到表單
     
     try:
         st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
@@ -177,10 +177,11 @@ def delete_post_callback(post_id):
     st.session_state.posts = [item for item in st.session_state.posts if item['id'] != post_id]
     save_data(st.session_state.posts)
 
-def go_to_post_callback(post_id):
-    """日曆點擊跳轉：切換回列表並定位"""
+def go_to_post_from_calendar(post_id):
+    """日曆點擊：切換回列表，設定捲動目標，但不開啟編輯"""
     st.session_state.view_mode_radio = "📋 列表模式"
-    st.session_state.target_scroll_id = post_id # 設定目標 ID
+    st.session_state.target_scroll_id = post_id
+    st.session_state.scroll_to_list_item = True # 新增一個標記給列表捲動用
 
 # --- 3. 初始化 Session State ---
 if 'posts' not in st.session_state:
@@ -193,6 +194,8 @@ if 'scroll_to_top' not in st.session_state:
     st.session_state.scroll_to_top = False
 if 'target_scroll_id' not in st.session_state:
     st.session_state.target_scroll_id = None
+if 'scroll_to_list_item' not in st.session_state:
+    st.session_state.scroll_to_list_item = False
 
 # --- 4. 自訂 CSS (視覺優化) ---
 st.markdown("""
@@ -208,7 +211,6 @@ st.markdown("""
     .gray { background-color: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }
     
     .overdue-alert { color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }
-    .overdue-text { color: #dc2626; font-weight: bold; }
     
     /* 平台標籤樣式 (加大、醒目) */
     .platform-badge {
@@ -235,8 +237,8 @@ st.markdown("""
         background-color: white;
         border: 1px solid #e5e7eb;
         border-radius: 12px;
-        padding: 25px 5px; /* 加大內距 */
-        margin-bottom: 25px; /* 加大行距 */
+        padding: 25px 5px;
+        margin-bottom: 25px;
         box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         transition: transform 0.1s;
     }
@@ -269,15 +271,17 @@ st.markdown("""
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     }
     
-    /* 日曆跳轉高亮 */
+    /* 滾動定位高亮 */
     .scroll-highlight {
         border: 3px solid #3b82f6 !important;
         box-shadow: 0 0 15px rgba(59, 130, 246, 0.5) !important;
         background-color: #eff6ff !important;
+        border-radius: 12px;
+        padding: 25px 5px;
+        margin-bottom: 25px;
     }
     
     .row-text-lg { font-size: 1.2em; font-weight: bold; color: #1f2937; }
-    .row-text-md { font-size: 1em; color: #4b5563; }
     
     /* 日曆樣式 */
     .cal-day-header { text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 5px; }
@@ -316,42 +320,40 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # --- 自動滾動 (編輯時) ---
+    # 錨點：用於編輯時滾動到頂部
+    st.markdown("<div id='edit_top'></div>", unsafe_allow_html=True)
+
+    # 1. 編輯模式 -> 滾動到表單頂部
     if st.session_state.scroll_to_top:
         components.html(
             """
             <script>
                 setTimeout(function() {
-                    try {
-                        window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
-                    } catch (e) { console.log(e); }
-                }, 100);
+                    var top = window.parent.document.getElementById('edit_top');
+                    if (top) { top.scrollIntoView({behavior: 'smooth', block: 'start'}); }
+                }, 150);
             </script>
             """,
             height=0
         )
         st.session_state.scroll_to_top = False
 
-    # --- 日曆跳轉捲動 (JavaScript) ---
-    if st.session_state.target_scroll_id:
-        target_id = st.session_state.target_scroll_id
+    # 2. 日曆點擊 -> 滾動到列表項目
+    if st.session_state.scroll_to_list_item and st.session_state.target_scroll_id:
+        target = st.session_state.target_scroll_id
         components.html(
             f"""
             <script>
                 setTimeout(function() {{
-                    try {{
-                        var element = window.parent.document.getElementById('post_{target_id}');
-                        if (element) {{
-                            element.scrollIntoView({{behavior: 'smooth', block: 'center'}});
-                        }}
-                    }} catch (e) {{ console.log(e); }}
-                }}, 500); // 延遲讓列表先渲染
+                    var el = window.parent.document.getElementById('post_{target}');
+                    if (el) {{ el.scrollIntoView({{behavior: 'smooth', block: 'center'}}); }}
+                }}, 300);
             </script>
             """,
             height=0
         )
-        # 執行一次後清除，避免重複跳轉，但為了讓 highlight CSS 保持，可以晚點清
-        # 這裡不清空 target_scroll_id 讓 CSS class 保持，下次點擊其他會覆蓋
+        st.session_state.scroll_to_list_item = False
+        # 不清除 target_scroll_id 以保留高亮效果，直到下次點擊或其他操作
 
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
@@ -519,7 +521,6 @@ with tab1:
                 st.rerun()
 
     # --- 檢視模式切換 ---
-    # 使用 session_state key 確保狀態同步
     if 'view_mode_radio' not in st.session_state:
         st.session_state.view_mode_radio = "📋 列表模式"
         
@@ -562,11 +563,6 @@ with tab1:
         for i, day_name in enumerate(weekdays):
             cols[i].markdown(f"<div class='cal-day-header'>{day_name}</div>", unsafe_allow_html=True)
 
-        platform_colors = {
-            'Facebook': '#3b82f6', 'Instagram': '#ec4899', 'LINE@': '#22c55e',
-            'YouTube': '#ef4444', 'Threads': '#000000', '社團': '#d97706'
-        }
-
         for week in cal:
             cols = st.columns(7)
             for i, day in enumerate(week):
@@ -588,8 +584,10 @@ with tab1:
                             day_posts = [p for p in filtered_posts if p['date'] == current_date_str]
                             
                             for p in day_posts:
-                                label = f"{ICONS.get(p['platform'],'')} {p['topic'][:6]}.."
-                                if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}", on_click=go_to_post_callback, args=(p['id'],)):
+                                p_color = PLATFORM_COLORS.get(p['platform'], '#6b7280')
+                                # 修改：日曆點擊 -> 切換列表 + 捲動
+                                label = f"{p['topic'][:6]}.." # 移除 ICON，只留文字
+                                if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}", on_click=go_to_post_from_calendar, args=(p['id'],)):
                                     pass
 
     else:
@@ -598,7 +596,6 @@ with tab1:
         with col_sort1:
             sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型"], index=0)
         with col_sort2:
-            # 修改：預設為 升序 (舊->新)
             sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0)
 
         key_map = { "日期": "date", "平台": "platform", "主題": "topic", "貼文類型": "postType" }
@@ -612,7 +609,7 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            # 欄位數量：12
+            # 確保有 12 個欄位
             col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             
@@ -622,8 +619,6 @@ with tab1:
 
             today_str = datetime.now().strftime("%Y-%m-%d")
             today_date_obj = datetime.now().date()
-
-            display_data = []
             
             pf_class_map = {
                 'Facebook': 'pf-fb', 'Instagram': 'pf-ig', 'LINE@': 'pf-line',
@@ -650,7 +645,6 @@ with tab1:
                     due_date = post_date + timedelta(days=days_offset)
                     
                     # 判斷是否顯示鈴鐺
-                    # 條件：平台需要填數據 (包含Threads) 且 時間到了 且 數據為0
                     show_bell = False
                     if not is_metrics_disabled(p['platform'], p['postFormat']):
                         if today_date_obj >= due_date and reach == 0:
@@ -661,46 +655,26 @@ with tab1:
                 rate7, show_bell_7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
                 rate30, show_bell_30, r30, e30 = calc_rate_and_check_due(p.get('metrics1m', {}), 30)
 
-                display_data.append({
-                    'ID': p['id'],
-                    '日期': p['date'],
-                    '平台': p['platform'],
-                    '主題': p['topic'],
-                    '類型': p['postType'],
-                    '子類型': p.get('postSubType', ''),
-                    '目的': p['postPurpose'],
-                    '形式': p['postFormat'],
-                    'KPI': label,
-                    '7日互動率': rate7,
-                    '30日互動率': rate30,
-                    '7日觸及': r7, '7日互動': e7,
-                    '30日觸及': r30, '30日互動': e30,
-                    '負責人': p['postOwner'],
-                    '_raw': p 
-                })
-
-                # 若被點擊跳轉，加上高亮樣式
+                # 判斷是否是被日曆點擊跳轉的項目
                 is_target = (st.session_state.target_scroll_id == p['id'])
+                
                 row_class = "scroll-highlight" if is_target else ("today-highlight" if is_today else "post-row")
                 
-                # HTML Anchor for Scrolling
+                # HTML 錨點
                 st.markdown(f"<div id='post_{p['id']}'></div>", unsafe_allow_html=True)
                 
                 with st.container():
                     st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
-                    # 12 columns - FIXED
+                    # 12 個欄位
                     cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
-                    # 日期
                     cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
-
-                    # 平台 (使用 Badge)
+                    
                     pf_cls = pf_class_map.get(p['platform'], 'pf-fb')
-                    cols[1].markdown(f"<span class='platform-badge {pf_cls}'>{ICONS.get(p['platform'],'')} {p['platform']}</span>", unsafe_allow_html=True)
+                    # 移除列表上的 ICON，只保留文字
+                    cols[1].markdown(f"<span class='platform-badge {pf_cls}'>{p['platform']}</span>", unsafe_allow_html=True)
                     
-                    # 主題 (加大)
                     cols[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
-                    
                     cols[3].write(f"{p['postType']}")
                     cols[4].write(p['postPurpose']) 
                     cols[5].write(p['postFormat']) 
@@ -723,21 +697,21 @@ with tab1:
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
+                    # 這是第 12 個欄位 (Index 11)，確保 cols 有 12 個
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
                     # 詳細數據展開區 (Threads 鈴鐺強調)
                     expander_label = "📉 詳細數據"
-                    # Threads 如果有缺資料，在詳細數據按鈕加上提示
+                    # Threads 如果有缺資料，在詳細數據按鈕加上紅色提示
                     if p['platform'] == 'Threads' and (show_bell_7 or show_bell_30):
-                         expander_label = "📉 詳細數據 🔔 缺資料"
+                         expander_label = "📉 詳細數據 :red[🔔 缺資料]" # 使用 Streamlit markdown color syntax
 
                     with st.expander(expander_label):
                         r_label = "瀏覽" if p['platform'] == 'Threads' else "觸及"
                         d_c1, d_c2, d_c3, d_c4 = st.columns(4)
                         
-                        # 內部數值提示 (紅色字體強調)
-                        # Streamlit metric label color hack not easy, using emoji
+                        # 內部數值提示
                         warn7 = "🔔 " if (show_bell_7 and p['platform'] == 'Threads') else ""
                         warn30 = "🔔 " if (show_bell_30 and p['platform'] == 'Threads') else ""
 
@@ -749,16 +723,14 @@ with tab1:
                     st.markdown('</div>', unsafe_allow_html=True)
 
             if display_data:
-                df = pd.DataFrame(display_data)
-                if not df.empty:
-                    export_df = df.drop(columns=['_raw', 'ID'], errors='ignore')
-                    csv = export_df.to_csv(index=False).encode('utf-8-sig')
-                    st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
+                # 這裡不需要顯示 data frame，已經用 container 畫出來了
+                # 僅保留 CSV 下載按鈕
+                csv = pd.DataFrame(display_data).drop(columns=['_raw', 'ID'], errors='ignore').to_csv(index=False).encode('utf-8-sig')
+                st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
         else:
             st.info("目前沒有符合條件的排程資料。")
 
 # === TAB 2: 數據分析 ===
-# (數據分析部分維持不變)
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
