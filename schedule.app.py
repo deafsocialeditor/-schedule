@@ -26,7 +26,7 @@ SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
 
-# 專案負責人 (修正：楷曜)
+# 專案負責人
 PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
 POST_OWNERS = ['一千', '楷曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
@@ -82,7 +82,7 @@ def save_standards(standards):
         json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    """判斷是否不需要填寫成效"""
+    """判斷是否不需要填寫成效 (Threads 需要填寫，故移除)"""
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
@@ -299,14 +299,20 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # JavaScript Scroll Logic
+    # --- 自動滾動到頂部 (JavaScript 強制版) ---
     if st.session_state.scroll_to_top:
         components.html(
             """
             <script>
                 try {
                     window.parent.document.querySelector('section.main').scrollTo({top: 0, behavior: 'smooth'});
-                } catch (e) { console.log("Scroll failed"); }
+                } catch (e) {
+                    try {
+                        window.parent.scrollTo(0, 0);
+                    } catch (e2) {
+                        console.log("Scroll attempt failed");
+                    }
+                }
             </script>
             """,
             height=0
@@ -610,9 +616,9 @@ with tab1:
                     reach = safe_num(metrics.get('reach', 0))
                     
                     rate_str = "-"
-                    # Threads 不計算互動率，顯示 -
+                    # Threads 不計算互動率，顯示「不計」
                     if p['platform'] == 'Threads':
-                        rate_str = "<span style='color:#bbb'>🚫 不計</span>"
+                        rate_str = "<span style='color:#bbb; font-size:0.9em'>🚫 不計</span>"
                     elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
                         rate_str = f"{(eng/reach*100):.1f}%"
                     
@@ -628,8 +634,8 @@ with tab1:
 
                     return rate_str, show_bell, int(reach), int(eng)
 
-                rate7, overdue7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
-                rate30, overdue30, r30, e30 = calc_rate_and_check_due(p.get('metrics1m', {}), 30)
+                rate7, show_bell_7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
+                rate30, show_bell_30, r30, e30 = calc_rate_and_check_due(p.get('metrics1m', {}), 30)
 
                 display_data.append({
                     'ID': p['id'],
@@ -653,7 +659,8 @@ with tab1:
                 
                 with st.container():
                     st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
-                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                    # 12 Columns definition
+                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     # 日期
                     cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
@@ -670,22 +677,15 @@ with tab1:
                     cols[5].write(p['postFormat']) 
                     cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
-                    # 7日互動率 (邏輯優化)
-                    if overdue7:
-                         # 如果是 Threads，鈴鐺顯示在展開的詳細數據中較合理，或者這裡顯示 "鈴鐺 + 不計"
-                         if p['platform'] == 'Threads':
-                             cols[7].markdown(f"<span class='overdue-alert'>🔔 {rate7}</span>", unsafe_allow_html=True)
-                         else:
-                             cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
+                    # 7日互動率
+                    if show_bell_7 and p['platform'] != 'Threads':
+                        cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     else:
                         cols[7].markdown(str(rate7), unsafe_allow_html=True)
 
                     # 30日互動率
-                    if overdue30:
-                        if p['platform'] == 'Threads':
-                             cols[8].markdown(f"<span class='overdue-alert'>🔔 {rate30}</span>", unsafe_allow_html=True)
-                        else:
-                             cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
+                    if show_bell_30 and p['platform'] != 'Threads':
+                        cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     else:
                         cols[8].markdown(str(rate30), unsafe_allow_html=True)
                         
@@ -703,8 +703,8 @@ with tab1:
                         d_c1, d_c2, d_c3, d_c4 = st.columns(4)
                         
                         # 如果是 Threads 且逾期，數值標題加鈴鐺
-                        warn7 = "🔔 " if (overdue7 and p['platform'] == 'Threads') else ""
-                        warn30 = "🔔 " if (overdue30 and p['platform'] == 'Threads') else ""
+                        warn7 = "🔔 " if (show_bell_7 and p['platform'] == 'Threads') else ""
+                        warn30 = "🔔 " if (show_bell_30 and p['platform'] == 'Threads') else ""
 
                         d_c1.metric(f"{warn7}7天-{r_label}", f"{r7:,}")
                         d_c2.metric(f"{warn7}7天-互動", f"{e7:,}")
