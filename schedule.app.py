@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效管家",
+    page_title="2025社群排程與成效",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -184,76 +184,25 @@ if 'scroll_to_top' not in st.session_state:
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
-    
-    /* KPI 標籤 */
-    .kpi-badge { padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 0.85em; display: inline-block; min-width: 60px; text-align: center;}
+    div[data-testid="stMetricValue"] { font-size: 24px; color: #4b5563; }
+    .kpi-badge { padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 0.8em; }
     .purple { background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }
     .green { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
     .orange { background-color: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }
     .red { background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
-    .gray { background-color: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }
-    
+    .gray { background-color: #f3f4f6; color: #9ca3af; }
     .overdue-alert { color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }
     
-    /* 平台標籤樣式 (加大、醒目) */
-    .platform-badge {
-        font-weight: 900;
-        padding: 4px 10px;
-        border-radius: 6px;
-        color: white;
-        font-size: 1.1em;
-        display: inline-block;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
-        width: 100%;
-        text-align: center;
-    }
-    .pf-fb { background-color: #3b82f6; }
-    .pf-ig { background-color: #ec4899; }
-    .pf-line { background-color: #22c55e; }
-    .pf-yt { background-color: #ef4444; }
-    .pf-threads { background-color: #000000; }
-    
-    /* 列表行樣式 (加大間距、邊框) */
-    .post-row {
-        background-color: white;
-        border: 1px solid #e5e7eb;
-        border-radius: 10px;
-        padding: 20px 0; /* 加大內距 */
-        margin-bottom: 20px; /* 加大行距 */
-        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
-        transition: transform 0.1s;
-    }
-    .post-row:hover {
-        border-color: #d1d5db;
-        box-shadow: 0 5px 10px rgba(0,0,0,0.05);
-    }
-    
-    /* 今日高亮樣式 */
     .today-highlight {
-        background-color: #fffbeb;
+        background-color: #fef9c3;
+        color: #b45309;
+        padding: 5px 10px;
+        border-radius: 8px;
+        font-weight: 900;
         border: 2px solid #fcd34d;
-        border-radius: 10px;
-        padding: 20px 0;
-        margin-bottom: 20px;
-        position: relative;
-        box-shadow: 0 4px 10px rgba(252, 211, 77, 0.2);
+        display: inline-block;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    .today-highlight::before {
-        content: "✨ 今日貼文";
-        position: absolute;
-        top: -12px;
-        left: 20px;
-        background: #fcd34d;
-        color: #92400e;
-        padding: 4px 12px;
-        border-radius: 12px;
-        font-size: 0.8em;
-        font-weight: bold;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-
-    .row-text-lg { font-size: 1.1em; font-weight: bold; color: #374151; }
-    .row-text-md { font-size: 1em; color: #4b5563; }
     
     /* 日曆樣式 */
     .cal-day-header { text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 5px; }
@@ -286,12 +235,13 @@ with st.sidebar:
         end_date = c2.date_input("結束", datetime.now())
 
 # --- 6. 主頁面 ---
-st.header("📅 社群排程與成效管家")
+st.header("📅 2025社群排程與成效")
 
 tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
+    # --- 新增：自動滾動到頂部 (JavaScript) ---
     if st.session_state.scroll_to_top:
         components.html(
             """
@@ -566,7 +516,6 @@ with tab1:
         with col_sort1:
             sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型"], index=0)
         with col_sort2:
-            # 預設升序
             sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0)
 
         key_map = { "日期": "date", "平台": "platform", "主題": "topic", "貼文類型": "postType" }
@@ -580,7 +529,7 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            # columns 12
+            # 欄位數量：12
             col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             
@@ -592,11 +541,6 @@ with tab1:
             today_date_obj = datetime.now().date()
 
             display_data = []
-            
-            pf_class_map = {
-                'Facebook': 'pf-fb', 'Instagram': 'pf-ig', 'LINE@': 'pf-line',
-                'YouTube': 'pf-yt', 'Threads': 'pf-threads'
-            }
 
             for p in filtered_posts:
                 raw_p = p
@@ -608,7 +552,6 @@ with tab1:
                     reach = safe_num(metrics.get('reach', 0))
                     rate_str = "-"
                     
-                    # 修改：Threads 強制顯示 "-" (不計算率)
                     if p['platform'] == 'Threads':
                         rate_str = "-"
                     elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
@@ -618,16 +561,9 @@ with tab1:
                     due_date = post_date + timedelta(days=days_offset)
                     is_due = False
                     
-                    # 修改：Threads 雖然要填數字，但不強制跳互動率鈴鐺
-                    if not is_metrics_disabled(p['platform'], p['postFormat']) and p['platform'] != 'Threads':
+                    if not is_metrics_disabled(p['platform'], p['postFormat']):
                         if today_date_obj >= due_date and reach == 0:
                             is_due = True
-                    # Threads 如果要填數字但沒填，是否要有鈴鐺？ 題目說「一樣要有提示」，但「不需計算互動率」
-                    # 如果「不需計算互動率」，那鈴鐺掛在互動率欄位有點怪，但這是目前唯一的警告位置。
-                    # 照題目「一樣要有提示」，我們保留 Threads 的鈴鐺提示，但數值顯示 -
-                    if p['platform'] == 'Threads' and today_date_obj >= due_date and reach == 0:
-                         is_due = True
-
                     return rate_str, is_due, int(reach), int(eng)
 
                 rate7, overdue7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
@@ -658,7 +594,12 @@ with tab1:
                     cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
-                    pf_cls = pf_class_map.get(p['platform'], 'pf-fb')
+                    
+                    pf_cls = {
+                        'Facebook': 'pf-fb', 'Instagram': 'pf-ig', 'LINE@': 'pf-line',
+                        'YouTube': 'pf-yt', 'Threads': 'pf-threads'
+                    }.get(p['platform'], 'pf-fb')
+                    
                     cols[1].markdown(f"<span class='platform-badge {pf_cls}'>{ICONS.get(p['platform'],'')} {p['platform']}</span>", unsafe_allow_html=True)
                     cols[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
                     cols[3].write(f"{p['postType']}")
