@@ -34,27 +34,21 @@ DESIGNERS = ['千惟', '靖嬙']
 # 定義廣告類型的目的
 AD_PURPOSE_LIST = ['廣告', '門市廣告']
 
-# Icon Mapping (列表用)
+# Icon Mapping (列表標籤用)
 ICONS = {
     'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵',
     '社團': '👥',
     'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
 }
 
-# 平台顏色對照 (全域定義)
+# 平台顏色對照 (全域定義 - 日曆與列表共用)
 PLATFORM_COLORS = {
-    'Facebook': '#3b82f6',   # 藍
-    'Instagram': '#ec4899',  # 粉
-    'LINE@': '#22c55e',      # 綠
-    'YouTube': '#ef4444',    # 紅
-    'Threads': '#000000',    # 黑
-    '社團': '#d97706'        # 橘
-}
-
-# 平台顏色標籤 (日曆用色塊前綴 - 備用，目前主要用 CSS 顏色)
-PLATFORM_BLOCKS = {
-    'Facebook': '🟦', 'Instagram': '🟪', 'LINE@': '🟩', 
-    'YouTube': '🟥', 'Threads': '⬛', '社團': '🟧'
+    'Facebook': '#1877F2',   # FB Blue
+    'Instagram': '#E1306C',  # IG Pink
+    'LINE@': '#06C755',      # LINE Green
+    'YouTube': '#FF0000',    # YT Red
+    'Threads': '#000000',    # Threads Black
+    '社團': '#F97316'        # Community Orange
 }
 
 # --- 2. 資料處理函式 ---
@@ -210,13 +204,19 @@ if 'target_scroll_id' not in st.session_state:
 if 'scroll_to_list_item' not in st.session_state:
     st.session_state.scroll_to_list_item = False
 
-# --- 4. 自訂 CSS (視覺優化：分隔線與日曆顏色) ---
+# --- 4. 自訂 CSS (視覺優化：瘦身版) ---
 st.markdown("""
     <style>
     .stApp { background-color: #ffffff; }
     
+    /* 縮減上方留白 */
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 2rem;
+    }
+    
     /* KPI 標籤 */
-    .kpi-badge { padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 0.85em; display: inline-block; min-width: 60px; text-align: center;}
+    .kpi-badge { padding: 2px 6px; border-radius: 8px; font-weight: bold; font-size: 0.8em; display: inline-block; min-width: 50px; text-align: center;}
     .purple { background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }
     .green { background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }
     .orange { background-color: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }
@@ -224,64 +224,41 @@ st.markdown("""
     .gray { background-color: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }
     
     .overdue-alert { color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }
-    .overdue-text { color: #dc2626; font-weight: bold; }
     
-    /* 平台標籤樣式 (加大、醒目) */
-    .platform-badge {
-        font-weight: 900;
-        padding: 6px 12px;
-        border-radius: 6px;
+    /* 平台標籤樣式 (顏色定義由 Python 動態產生 CSS style 屬性) */
+    .platform-badge-box {
+        font-weight: 800;
+        padding: 4px 8px;
+        border-radius: 4px;
         color: white;
-        font-size: 1.0em;
+        font-size: 0.9em;
         display: inline-block;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.1);
         width: 100%;
         text-align: center;
-        margin-bottom: 5px;
+        margin-bottom: 2px;
     }
-    .pf-fb { background-color: #3b82f6; }
-    .pf-ig { background-color: #ec4899; }
-    .pf-line { background-color: #22c55e; }
-    .pf-yt { background-color: #ef4444; }
-    .pf-threads { background-color: #000000; }
-    .pf-group { background-color: #d97706; }
     
-    /* 列表行樣式 (移除區塊感，改為分隔線) */
+    /* 列表行樣式 (瘦身版：僅底線，間距縮小) */
     .post-row {
         background-color: transparent;
-        border-bottom: 1px solid #e5e7eb; /* 僅保留底線 */
-        border-radius: 0;
-        padding: 10px 0; /* 拉近距離 */
+        border-bottom: 1px solid #f3f4f6; 
+        padding: 8px 0; /* 縮小內距 */
         margin-bottom: 0;
-        box-shadow: none;
         transition: background-color 0.2s;
     }
     .post-row:hover {
-        background-color: #f9fafb; /* 滑鼠移過微亮 */
+        background-color: #f9fafb;
     }
     
     /* 今日高亮樣式 */
     .today-highlight {
         background-color: #fffbeb;
         border-bottom: 2px solid #fcd34d;
-        padding: 10px 0;
-        margin-bottom: 0;
+        padding: 8px 0;
         position: relative;
     }
-    .today-highlight::before {
-        content: "✨ 今日貼文";
-        position: absolute;
-        top: 2px;
-        left: 0;
-        background: #fcd34d;
-        color: #92400e;
-        padding: 2px 8px;
-        border-radius: 4px;
-        font-size: 0.7em;
-        font-weight: bold;
-    }
     
-    /* 滾動定位高亮 (黃色閃爍) */
+    /* 滾動定位高亮 */
     @keyframes highlight-fade {
         0% { background-color: #fef08a; }
         100% { background-color: transparent; }
@@ -289,16 +266,16 @@ st.markdown("""
     .scroll-highlight {
         animation: highlight-fade 2s ease-out;
         border-bottom: 2px solid #3b82f6 !important;
-        padding: 15px 0;
+        padding: 8px 0;
     }
     
-    .row-text-lg { font-size: 1.1em; font-weight: bold; color: #1f2937; }
-    .row-text-md { font-size: 1em; color: #4b5563; }
+    .row-text-lg { font-size: 1.05em; font-weight: bold; color: #1f2937; }
+    .row-text-md { font-size: 0.9em; color: #4b5563; }
     
     /* 日曆樣式 (緊湊化) */
-    .cal-day-header { text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 5px; margin-bottom: 5px; }
-    .cal-day-cell { min-height: 60px; padding: 2px; border-radius: 6px; font-size: 0.8em; } /* 縮小高度與內距 */
-    .cal-day-num { font-weight: bold; font-size: 1.0em; color: #374151; margin-bottom: 2px; margin-left: 2px; }
+    .cal-day-header { text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 2px; font-size: 0.9em; }
+    .cal-day-cell { min-height: 60px; padding: 2px; border-radius: 4px; font-size: 0.8em; }
+    .cal-day-num { font-weight: bold; font-size: 0.9em; color: #374151; margin-bottom: 2px; margin-left: 2px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -601,21 +578,34 @@ with tab1:
                             for p in day_posts:
                                 # 使用平台顏色
                                 p_color = PLATFORM_COLORS.get(p['platform'], '#6b7280')
-                                label = f"{p['topic'][:6]}.."
-                                # 日曆點擊：觸發 go_to_post_from_calendar
+                                label = f"{p['topic'][:5]}.." # 縮短文字
+                                # 日曆點擊：觸發 go_to_post_from_calendar (只捲動，不編輯)
                                 if st.button(label, key=f"cal_btn_{p['id']}", help=f"{p['platform']} - {p['topic']}", on_click=go_to_post_from_calendar, args=(p['id'],)):
                                     pass
                                     
-                                # CSS Hack for button color
+                                # CSS Hack for button color - 直接嵌入 style 覆蓋
+                                # 注意：key 會生成 class，但這裡用通用選擇器 hack
+                                # 為了更精準，其實需要更複雜的 id matching。但這裡做一個簡單的全域覆蓋嘗試，
+                                # 或者更簡單：直接把背景色寫在 markdown 裡，不使用 button? 
+                                # 但使用者要求「點擊後回到列表」。Button 是必須的。
+                                # 由於 Streamlit 按鈕樣式難改，我們這裡盡量用 border-left 標示顏色。
                                 st.markdown(f"""
                                 <style>
-                                div[data-testid="stButton"] button[kind="secondary"] {{
-                                    border-left: 5px solid {p_color} !important;
-                                    text-align: left;
-                                    padding-left: 5px;
+                                div.row-widget.stButton > button[key="cal_btn_{p['id']}"] {{
+                                    background-color: {p_color} !important;
+                                    color: white !important;
+                                    border: none;
+                                    font-size: 0.75em;
+                                    padding: 2px 4px;
+                                    height: auto;
                                 }}
                                 </style>
-                                """, unsafe_allow_html=True)
+                                """, unsafe_allow_html=True) 
+                                # 上面的 style hack 在 loop 中可能會有性能問題或選取不到。
+                                # 替代方案：改用 div 顯示顏色，文字做連結？不行，無法觸發 python callback。
+                                # 退而求其次：我們在 button 上方顯示一個極小的色條。
+                                st.markdown(f"<div style='height:4px; background-color:{p_color}; border-radius:2px 2px 0 0; margin-bottom:-4px;'></div>", unsafe_allow_html=True)
+
 
     else:
         # --- 列表模式 ---
@@ -650,11 +640,6 @@ with tab1:
             today_str = datetime.now().strftime("%Y-%m-%d")
             today_date_obj = datetime.now().date()
             
-            pf_class_map = {
-                'Facebook': 'pf-fb', 'Instagram': 'pf-ig', 'LINE@': 'pf-line',
-                'YouTube': 'pf-yt', 'Threads': 'pf-threads', '社團': 'pf-group'
-            }
-
             for p in filtered_posts:
                 raw_p = p
                 label, color = get_performance_label(raw_p['platform'], raw_p.get('metrics7d'), raw_p['postFormat'], st.session_state.standards)
@@ -665,7 +650,6 @@ with tab1:
                     reach = safe_num(metrics.get('reach', 0))
                     
                     rate_str = "-"
-                    # Threads 不計算互動率，顯示「不計」
                     if p['platform'] == 'Threads':
                         rate_str = "<span style='color:#bbb; font-size:0.9em'>🚫 不計</span>"
                     elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
@@ -674,7 +658,6 @@ with tab1:
                     post_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
                     due_date = post_date + timedelta(days=days_offset)
                     
-                    # 判斷是否顯示鈴鐺
                     show_bell = False
                     if not is_metrics_disabled(p['platform'], p['postFormat']):
                         if today_date_obj >= due_date and reach == 0:
@@ -685,29 +668,10 @@ with tab1:
                 rate7, show_bell_7, r7, e7 = calc_rate_and_check_due(p.get('metrics7d', {}), 7)
                 rate30, show_bell_30, r30, e30 = calc_rate_and_check_due(p.get('metrics1m', {}), 30)
 
-                display_data.append({
-                    'ID': p['id'],
-                    '日期': p['date'],
-                    '平台': p['platform'],
-                    '主題': p['topic'],
-                    '類型': p['postType'],
-                    '子類型': p.get('postSubType', ''),
-                    '目的': p['postPurpose'],
-                    '形式': p['postFormat'],
-                    'KPI': label,
-                    '7日互動率': rate7,
-                    '30日互動率': rate30,
-                    '7日觸及': r7, '7日互動': e7,
-                    '30日觸及': r30, '30日互動': e30,
-                    '負責人': p['postOwner'],
-                    '_raw': p 
-                })
-
-                # 滾動高亮判定
+                # 滾動高亮
                 is_target = (st.session_state.target_scroll_id == p['id'])
                 row_class = "scroll-highlight" if is_target else ("today-highlight" if is_today else "post-row")
                 
-                # HTML 錨點
                 st.markdown(f"<div id='post_{p['id']}'></div>", unsafe_allow_html=True)
                 
                 with st.container():
@@ -717,23 +681,23 @@ with tab1:
                     
                     cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
                     
-                    pf_cls = pf_class_map.get(p['platform'], 'pf-fb')
-                    # 移除 ICON
-                    cols[1].markdown(f"<span class='platform-badge {pf_cls}'>{p['platform']}</span>", unsafe_allow_html=True)
+                    p_color = PLATFORM_COLORS.get(p['platform'], '#6b7280')
+                    cols[1].markdown(f"<span class='platform-badge-box' style='background-color:{p_color}'>{p['platform']}</span>", unsafe_allow_html=True)
                     
                     cols[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
+                    
                     cols[3].write(f"{p['postType']}")
                     cols[4].write(p['postPurpose']) 
                     cols[5].write(p['postFormat']) 
                     cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
-                    # 7日互動率
+                    # 7日
                     if show_bell_7 and p['platform'] != 'Threads':
                         cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     else:
                         cols[7].markdown(str(rate7), unsafe_allow_html=True)
 
-                    # 30日互動率
+                    # 30日
                     if show_bell_30 and p['platform'] != 'Threads':
                         cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     else:
@@ -741,16 +705,16 @@ with tab1:
                         
                     cols[9].write(f"{p['postOwner']}")
 
+                    # Edit (Index 10)
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
-                    # 第 12 欄 (Index 11)
+                    # Delete (Index 11) - Confirmed 12 cols
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
-                    # 詳細數據展開區
+                    # 詳細數據
                     expander_label = "📉 詳細數據"
-                    # Threads 若缺資料，外層顯示紅字鈴鐺
                     if p['platform'] == 'Threads' and (show_bell_7 or show_bell_30):
                          expander_label = "📉 詳細數據 :red[🔔 缺資料]" 
 
@@ -769,6 +733,7 @@ with tab1:
                     st.markdown('</div>', unsafe_allow_html=True)
 
             if display_data:
+                # 僅保留 CSV 下載按鈕
                 csv = pd.DataFrame(display_data).drop(columns=['_raw', 'ID'], errors='ignore').to_csv(index=False).encode('utf-8-sig')
                 st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
         else:
