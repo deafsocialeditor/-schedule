@@ -748,7 +748,7 @@ with tab2:
         })
         
         df_stats = pd.DataFrame(p_stats)
-        df_stats = df_stats[["平台", "總觸及", "總互動", "互動率", "篇數"]]
+        df_stats = df_stats[["平台", "篇數", "總觸及", "總互動", "互動率"]]
         st.dataframe(df_stats, use_container_width=True)
 
     st.markdown("### 🍰 類型分佈")
