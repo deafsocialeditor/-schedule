@@ -621,10 +621,10 @@ with tab2:
         with c3:
             st.subheader("Threads")
             # Threads 雙指標
-            std['Threads']['reach_label'] = st.text_input("指標1名稱", value=std.get('Threads',{}).get('reach_label', '瀏覽目標'))
-            std['Threads']['reach'] = st.number_input("指標1數值", value=std.get('Threads',{}).get('reach', 500))
-            std['Threads']['engagement_label'] = st.text_input("指標2名稱", value=std.get('Threads',{}).get('engagement_label', '互動目標'))
-            std['Threads']['engagement'] = st.number_input("指標2數值", value=std.get('Threads',{}).get('engagement', 50))
+            std['Threads']['reach_label'] = st.text_input("瀏覽", value=std.get('Threads',{}).get('reach_label', '瀏覽目標'))
+            std['Threads']['reach'] = st.number_input("瀏覽數值", value=std.get('Threads',{}).get('reach', 500))
+            std['Threads']['engagement_label'] = st.text_input("互動", value=std.get('Threads',{}).get('engagement_label', '互動目標'))
+            std['Threads']['engagement'] = st.number_input("互動數值", value=std.get('Threads',{}).get('engagement', 50))
         with c4:
             st.subheader("其他")
             std['YouTube']['reach'] = st.number_input("YT 觸及", value=std['YouTube']['reach'])
