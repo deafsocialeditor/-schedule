@@ -54,9 +54,9 @@ PLATFORM_COLORS = {
 # 平台隱藏標記 (用於 CSS 選擇器識別平台)
 PLATFORM_MARKS = {
     'Facebook': '🟦', 
-    'Instagram': '🟥', 
+    'Instagram': '🟪', 
     'LINE@': '🟩', 
-    'YouTube': '🟪', 
+    'YouTube': '🟥', 
     'Threads': '⬛', 
     '社團': '🟧'
 }
@@ -102,7 +102,7 @@ def save_standards(standards):
         json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    """判斷是否不需要填寫成效 (Threads 需填寫，故排除)"""
+    """判斷是否不需要填寫成效 (Threads 需填寫但無互動率，故不在此列，由後續邏輯處理)"""
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
@@ -114,7 +114,7 @@ def safe_num(val):
 def get_performance_label(platform, metrics, fmt, standards):
     """計算 KPI 標籤"""
     if is_metrics_disabled(platform, fmt):
-        return "-", "gray"
+        return "🚫 不計", "gray"
     
     reach = safe_num(metrics.get('reach', 0))
     likes = safe_num(metrics.get('likes', 0))
@@ -219,14 +219,13 @@ if 'scroll_to_list_item' not in st.session_state:
 calendar_button_css = ""
 for pf, mark in PLATFORM_MARKS.items():
     color = PLATFORM_COLORS.get(pf, '#888')
-    # 日曆按鈕樣式 - 極致緊湊與滿版
     calendar_button_css += f"""
     div[data-testid="stButton"] button[aria-label^="{mark}"] {{
         background-color: {color} !important;
         color: white !important;
         border: none !important;
-        font-size: 0.75em !important; /* 縮小字體 */
-        padding: 1px 4px !important; /* 極小內距 */
+        font-size: 0.75em !important; 
+        padding: 1px 4px !important;
         border-radius: 3px !important;
         width: 100% !important;
         text-align: left !important;
@@ -234,8 +233,8 @@ for pf, mark in PLATFORM_MARKS.items():
         overflow: hidden !important;
         text-overflow: ellipsis !important;
         display: block !important;
-        margin-top: 0px !important; /* 縮小間距 */
-        margin-bottom: 2px !important; /* 縮小間距 */
+        margin-top: 0px !important; 
+        margin-bottom: 2px !important;
         line-height: 1.1 !important;
         height: auto !important;
         min-height: 0px !important;
@@ -250,13 +249,11 @@ st.markdown(f"""
     <style>
     .stApp {{ background-color: #ffffff; }}
     
-    /* 縮減上方留白 */
     .block-container {{
         padding-top: 3rem;
         padding-bottom: 2rem;
     }}
     
-    /* KPI 標籤 */
     .kpi-badge {{ padding: 2px 6px; border-radius: 8px; font-weight: bold; font-size: 0.8em; display: inline-block; min-width: 50px; text-align: center;}}
     .purple {{ background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }}
     .green {{ background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }}
@@ -266,7 +263,6 @@ st.markdown(f"""
     
     .overdue-alert {{ color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }}
     
-    /* 平台標籤樣式 (列表用 - 移除 ICON 版) */
     .platform-badge-box {{
         font-weight: 800;
         padding: 4px 8px;
@@ -279,7 +275,6 @@ st.markdown(f"""
         margin-bottom: 2px;
     }}
     
-    /* 列表行樣式 (瘦身版：僅底線，間距縮小) */
     .post-row {{
         background-color: transparent;
         border-bottom: 1px solid #f3f4f6; 
@@ -291,7 +286,6 @@ st.markdown(f"""
         background-color: #f9fafb;
     }}
     
-    /* 今日高亮樣式 */
     .today-highlight {{
         background-color: #fffbeb;
         border-bottom: 2px solid #fcd34d;
@@ -299,7 +293,6 @@ st.markdown(f"""
         position: relative;
     }}
     
-    /* 滾動定位高亮 */
     @keyframes highlight-fade {{
         0% {{ background-color: #fef08a; }}
         100% {{ background-color: transparent; }}
@@ -313,12 +306,10 @@ st.markdown(f"""
     .row-text-lg {{ font-size: 1.05em; font-weight: bold; color: #1f2937; }}
     .row-text-md {{ font-size: 0.9em; color: #4b5563; }}
     
-    /* 日曆樣式 (緊湊化) */
     .cal-day-header {{ text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 2px; font-size: 0.9em; }}
     .cal-day-cell {{ min-height: 60px; padding: 2px; border-radius: 4px; font-size: 0.8em; border: 1px solid #f3f4f6; }}
     .cal-day-num {{ font-weight: bold; font-size: 0.9em; color: #374151; margin-bottom: 2px; margin-left: 2px; }}
     
-    /* 注入按鈕顏色樣式 */
     {calendar_button_css}
     </style>
 """, unsafe_allow_html=True)
@@ -353,10 +344,10 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # 錨點：用於編輯時滾動到頂部
+    # 錨點
     st.markdown("<div id='edit_top'></div>", unsafe_allow_html=True)
 
-    # 1. 編輯模式 -> 滾動到表單頂部
+    # 1. 編輯模式 -> 滾動
     if st.session_state.scroll_to_top:
         components.html(
             """
@@ -366,14 +357,14 @@ with tab1:
                         var top = window.parent.document.getElementById('edit_top');
                         if (top) { top.scrollIntoView({behavior: 'smooth', block: 'start'}); }
                     } catch (e) { console.log(e); }
-                }, 100);
+                }, 150);
             </script>
             """,
             height=0
         )
         st.session_state.scroll_to_top = False
 
-    # 2. 日曆點擊 -> 滾動到列表項目
+    # 2. 日曆點擊 -> 滾動
     if st.session_state.scroll_to_list_item and st.session_state.target_scroll_id:
         target = st.session_state.target_scroll_id
         components.html(
@@ -558,7 +549,7 @@ with tab1:
 
     # --- 檢視模式切換 ---
     if 'view_mode_radio' not in st.session_state:
-        st.session_state.view_mode_radio = "🗓️ 日曆模式" # 預設日曆
+        st.session_state.view_mode_radio = "🗓️ 日曆模式"
         
     view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed", key="view_mode_radio")
     st.write("") 
@@ -640,7 +631,7 @@ with tab1:
 
     else:
         # --- 列表模式 ---
-        # 修正：先初始化 display_data
+        # 修正：初始化 display_data
         display_data = []
 
         col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
@@ -661,7 +652,7 @@ with tab1:
 
         if filtered_posts:
             # 欄位定義：12 欄 (0~11)
-            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+            col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             
             for col, h in zip(col_list, headers):
@@ -711,7 +702,7 @@ with tab1:
                 with st.container():
                     st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
                     # 12 columns
-                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+                    cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                     
                     cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
                     
@@ -727,13 +718,21 @@ with tab1:
                     cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
                     # 7日互動率
-                    if show_bell_7 and p['platform'] != 'Threads':
+                    if is_metrics_disabled(p['platform'], p['postFormat']):
+                        cols[7].markdown(str(rate7), unsafe_allow_html=True) # 顯示 "🚫 不計"
+                    elif p['platform'] == 'Threads':
+                         cols[7].markdown(str(rate7), unsafe_allow_html=True) # 顯示 "🚫 不計"
+                    elif show_bell_7:
                         cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     else:
                         cols[7].markdown(str(rate7), unsafe_allow_html=True)
 
                     # 30日互動率
-                    if show_bell_30 and p['platform'] != 'Threads':
+                    if is_metrics_disabled(p['platform'], p['postFormat']):
+                        cols[8].markdown(str(rate30), unsafe_allow_html=True)
+                    elif p['platform'] == 'Threads':
+                         cols[8].markdown(str(rate30), unsafe_allow_html=True)
+                    elif show_bell_30:
                         cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     else:
                         cols[8].markdown(str(rate30), unsafe_allow_html=True)
