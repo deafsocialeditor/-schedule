@@ -652,10 +652,10 @@ with tab2:
 
         with c3:
             st.subheader("Threads")
-            tr_reach_lbl = st.text_input("指標1名稱", value=std.get('Threads',{}).get('reach_label', '瀏覽'))
-            tr_reach = st.number_input("指標1數值", value=std.get('Threads',{}).get('reach', 500))
-            tr_eng_lbl = st.text_input("指標2名稱", value=std.get('Threads',{}).get('engagement_label', '互動'))
-            tr_eng = st.number_input("指標2數值", value=std.get('Threads',{}).get('engagement', 50))
+            tr_reach_lbl = st.text_input("瀏覽", value=std.get('Threads',{}).get('reach_label', '瀏覽'))
+            tr_reach = st.number_input("瀏覽", value=std.get('Threads',{}).get('reach', 500))
+            tr_eng_lbl = st.text_input("互動", value=std.get('Threads',{}).get('engagement_label', '互動'))
+            tr_eng = st.number_input("互動", value=std.get('Threads',{}).get('engagement', 50))
             
             std['Threads']['reach_label'] = tr_reach_lbl
             std['Threads']['reach'] = tr_reach
