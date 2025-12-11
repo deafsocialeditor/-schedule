@@ -79,7 +79,11 @@ def load_standards():
     }
     if not os.path.exists(STANDARDS_FILE): return defaults
     try:
-        with open(STANDARDS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
+        with open(STANDARDS_FILE, 'r', encoding='utf-8') as f: 
+            data = json.load(f)
+            # 安全檢查: 防止舊版資料導致 KeyError
+            if 'engagement' not in data.get('Facebook', {}).get('high', {}): return defaults
+            return data
     except: return defaults
 
 def save_standards(standards):
@@ -95,7 +99,8 @@ def safe_num(val):
 def get_performance_label(platform, metrics, fmt, standards):
     """
     回傳: (標籤文字, 顏色class, Tooltip提示文字)
-    邏輯：細分顯示 觸及/互動/互動率 哪項達標
+    邏輯：只要一項達標即算達標 (OR Logic)
+    文字簡化：去除「達標」二字，保留「未達標」
     """
     if is_metrics_disabled(platform, fmt): 
         return "🚫 不計", "gray", "此形式/平台不需計算成效"
@@ -114,60 +119,57 @@ def get_performance_label(platform, metrics, fmt, standards):
     color = "gray"
     tooltip = ""
 
-    # Helper: 計算目標互動率
-    def get_target_rate(r, e):
-        return (e / r * 100) if r > 0 else 0
+    # Helper function for OR logic
+    def check_pass(target_r, target_e):
+        target_rate = (target_e / target_r * 100) if target_r > 0 else 0
+        return (reach >= target_r) or (eng >= target_e) or (rate >= target_rate)
 
     if platform == 'Facebook':
-        h = std['high']
-        s = std['std']
-        l = std['low']
+        h = std.get('high', {'reach': 2000, 'engagement': 100})
+        s = std.get('std', {'reach': 1500, 'engagement': 45})
+        l = std.get('low', {'reach': 1000, 'engagement': 15})
         
-        # Tooltip info
-        h_rt = get_target_rate(h['reach'], h['engagement'])
-        s_rt = get_target_rate(s['reach'], s['engagement'])
-        l_rt = get_target_rate(l['reach'], l['engagement'])
+        h_rt = (h['engagement']/h['reach']*100) if h['reach']>0 else 0
+        s_rt = (s['engagement']/s['reach']*100) if s['reach']>0 else 0
+        l_rt = (l['engagement']/l['reach']*100) if l['reach']>0 else 0
         
         tooltip = f"高標: 觸及{int(h['reach'])} / 互動{int(h['engagement'])} (率{h_rt:.1f}%)\n標準: 觸及{int(s['reach'])} / 互動{int(s['engagement'])} (率{s_rt:.1f}%)\n低標: 觸及{int(l['reach'])} / 互動{int(l['engagement'])} (率{l_rt:.1f}%)"
         
         # Check High
-        if (reach >= h['reach']) or (eng >= h['engagement']) or (rate >= h_rt):
+        if check_pass(h['reach'], h['engagement']):
             if reach >= h['reach'] and eng >= h['engagement']: return "🏆 高標雙指標", "purple", tooltip
             if reach >= h['reach']: return "🏆 高標觸及", "purple", tooltip
             if eng >= h['engagement']: return "🏆 高標互動", "purple", tooltip
             return "🏆 高標互動率", "purple", tooltip
             
         # Check Std
-        if (reach >= s['reach']) or (eng >= s['engagement']) or (rate >= s_rt):
+        elif check_pass(s['reach'], s['engagement']):
             if reach >= s['reach'] and eng >= s['engagement']: return "✅ 標準雙指標", "green", tooltip
             if reach >= s['reach']: return "✅ 標準觸及", "green", tooltip
             if eng >= s['engagement']: return "✅ 標準互動", "green", tooltip
             return "✅ 標準互動率", "green", tooltip
 
         # Check Low
-        if (reach >= l['reach']) or (eng >= l['engagement']) or (rate >= l_rt):
+        elif check_pass(l['reach'], l['engagement']):
             if reach >= l['reach'] and eng >= l['engagement']: return "🤏 低標雙指標", "orange", tooltip
             if reach >= l['reach']: return "🤏 低標觸及", "orange", tooltip
             if eng >= l['engagement']: return "🤏 低標互動", "orange", tooltip
             return "🤏 低標互動率", "orange", tooltip
             
-        return "🔴 未達標", "red", tooltip
+        else: return "🔴 未達標", "red", tooltip
         
     elif platform in ['Instagram', 'YouTube', '社團']:
         t_reach = std.get('reach', 0)
         t_eng = std.get('engagement', 0)
-        t_rate = get_target_rate(t_reach, t_eng)
+        t_rate = (t_eng / t_reach * 100) if t_reach > 0 else 0
         
         tooltip = f"目標: 觸及 {int(t_reach)} / 互動 {int(t_eng)} (率{t_rate:.1f}%)"
         
-        pass_reach = reach >= t_reach
-        pass_eng = eng >= t_eng
-        pass_rate = rate >= t_rate
-        
-        if pass_reach and pass_eng: return "✅ 雙指標", "green", tooltip
-        elif pass_reach: return "✅ 觸及", "green", tooltip
-        elif pass_eng: return "✅ 互動", "green", tooltip
-        elif pass_rate: return "✅ 互動率", "green", tooltip
+        if check_pass(t_reach, t_eng):
+            if (reach >= t_reach) and (eng >= t_eng): return "✅ 雙指標", "green", tooltip
+            if reach >= t_reach: return "✅ 觸及", "green", tooltip
+            if eng >= t_eng: return "✅ 互動", "green", tooltip
+            return "✅ 互動率", "green", tooltip
         else: return "🔴 未達標", "red", tooltip
 
     elif platform == 'Threads':
@@ -181,10 +183,10 @@ def get_performance_label(platform, metrics, fmt, standards):
         pass_reach = reach >= t_reach
         pass_eng = eng >= t_eng
         
-        if pass_reach and pass_eng: return "✅ 雙指標", "green", tooltip
-        elif pass_reach: return f"✅ {l_reach}", "green", tooltip
-        elif pass_eng: return f"✅ {l_eng}", "green", tooltip
-        else: return "🔴 未達標", "red", tooltip
+        if pass_reach and pass_eng: label, color = "✅ 雙指標", "green"
+        elif pass_reach: label, color = f"✅ {l_reach}", "green"
+        elif pass_eng: label, color = f"✅ {l_eng}", "green"
+        else: label, color = "🔴 未達標", "red"
 
     return label, color, tooltip
 
@@ -466,7 +468,6 @@ with tab1:
                     st.success("已新增！")
                 
                 save_data(st.session_state.posts)
-                
                 st.session_state.view_mode_radio = "📋 列表模式"
                 st.session_state.scroll_to_list_item = True
                 
@@ -539,6 +540,11 @@ with tab1:
     
     # --- List View ---
     else:
+        # Pre-process & Sort
+        # Initialize display_data to empty list to prevent NameError
+        display_data = []
+        
+        # Data processing logic
         processed_data = [process_post_metrics(p) for p in filtered_posts]
         
         col_s1, col_s2, col_cnt = st.columns([1, 1, 4])
@@ -559,8 +565,8 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - FIXED
-            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+            # 12 Cols Definition - FIXED [0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
+            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
             st.markdown("<hr style='margin:0.5em 0; border-top:1px dashed #ddd;'>", unsafe_allow_html=True)
@@ -569,7 +575,6 @@ with tab1:
 
             for p in processed_data:
                 label, color, tooltip = get_performance_label(p['platform'], p.get('metrics7d'), p['postFormat'], st.session_state.standards)
-                
                 is_today = (p['date'] == today_s)
                 is_target = (st.session_state.target_scroll_id == p['id'])
                 
@@ -578,8 +583,8 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                    # 12 Cols - FIXED
-                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                    # 12 Cols - Matching definition
+                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
                     pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
@@ -588,7 +593,6 @@ with tab1:
                     c[3].write(p['postType'])
                     c[4].write(p['postPurpose'])
                     c[5].write(p['postFormat'])
-                    
                     c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
                     # 7D Rate
@@ -623,7 +627,9 @@ with tab1:
                         dc[3].metric(f"{w30}30天-互動", f"{p['e30']:,}")
                     st.markdown('</div>', unsafe_allow_html=True)
             
-            export_df = pd.DataFrame(processed_data)
+            # Export CSV
+            display_data = processed_data
+            export_df = pd.DataFrame(display_data)
             export_cols = {
                 'date': '日期', 'platform': '平台', 'topic': '主題', 'postType': '類型', 
                 'postSubType': '子類型', 'postPurpose': '目的', 'postFormat': '形式',
@@ -739,13 +745,14 @@ with tab2:
             for p in sub:
                 if is_metrics_disabled(p['platform'], p['postFormat']): continue
                 m = p.get(p_sel, {})
-                if pf != 'Threads': r += safe_num(m.get('reach', 0))
+                # Count threads reach
+                r += safe_num(m.get('reach', 0))
                 e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
             rt = (e/r*100) if r > 0 else 0
             rt_s = f"{rt:.2f}%" if pf != 'Threads' else "-"
             p_stats.append({"平台": pf, "篇數": len(sub), "總觸及": int(r), "總互動": int(e), "互動率": rt_s})
         
-        # Add Total Row
+        # Add Total Row - Only Count
         p_stats.append({
             "平台": "📊 總計", 
             "篇數": cnt, 
