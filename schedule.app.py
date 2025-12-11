@@ -466,6 +466,7 @@ with tab1:
                     st.success("已新增！")
                 
                 save_data(st.session_state.posts)
+                
                 st.session_state.view_mode_radio = "📋 列表模式"
                 st.session_state.scroll_to_list_item = True
                 
@@ -525,7 +526,6 @@ with tab1:
                             st.markdown(f"<div class='cal-day-cell' style='{bg}'><div class='cal-day-num'>{day}</div></div>", unsafe_allow_html=True)
                             day_p = [p for p in filtered_posts if p['date'] == date_s]
                             for p in day_p:
-                                # Bell Logic
                                 show_bell = False
                                 if not is_metrics_disabled(p['platform'], p['postFormat']):
                                     p_d = datetime.strptime(p['date'], "%Y-%m-%d").date()
@@ -578,7 +578,7 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                    # 12 Cols
+                    # 12 Cols - FIXED
                     c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
@@ -588,14 +588,17 @@ with tab1:
                     c[3].write(p['postType'])
                     c[4].write(p['postPurpose'])
                     c[5].write(p['postFormat'])
+                    
                     c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
+                    # 7D Rate
                     if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[7].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
                          c[7].markdown(p['rate7_str'], unsafe_allow_html=True) 
                     else: c[7].markdown(p['rate7_str'], unsafe_allow_html=True)
 
+                    # 30D Rate
                     if p['bell30'] and p['platform'] != 'Threads': c[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[8].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
@@ -668,6 +671,7 @@ with tab2:
             ig_eng = st.number_input("IG 互動目標", value=std['Instagram'].get('engagement', 30))
             ig_rt = (ig_eng/ig_reach*100) if ig_reach>0 else 0
             st.caption(f"預估互動率: {ig_rt:.2f}%")
+            
             std['Instagram']['engagement'] = ig_eng
             std['Instagram']['reach'] = ig_reach
 
@@ -721,7 +725,7 @@ with tab2:
 
     cnt = len(target)
     
-    # Overview - Only Count
+    # Overview
     st.markdown("---")
     st.metric("篩選總篇數", cnt)
     
@@ -741,7 +745,7 @@ with tab2:
             rt_s = f"{rt:.2f}%" if pf != 'Threads' else "-"
             p_stats.append({"平台": pf, "篇數": len(sub), "總觸及": int(r), "總互動": int(e), "互動率": rt_s})
         
-        # Add Total Row - Only Count
+        # Add Total Row
         p_stats.append({
             "平台": "📊 總計", 
             "篇數": cnt, 
