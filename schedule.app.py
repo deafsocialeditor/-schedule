@@ -34,7 +34,7 @@ DESIGNERS = ['千惟', '靖嬙']
 # 定義廣告類型的目的
 AD_PURPOSE_LIST = ['廣告', '門市廣告']
 
-# Icon Mapping (列表標籤用，已移除顯示，保留邏輯備用)
+# Icon Mapping (列表標籤用)
 ICONS = {
     'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵',
     '社團': '👥',
@@ -51,7 +51,7 @@ PLATFORM_COLORS = {
     '社團': '#F97316'        # Community Orange
 }
 
-# 平台隱藏標記 (用於 CSS 選擇器識別平台，實現日曆色塊)
+# 平台隱藏標記 (用於 CSS 選擇器識別平台)
 PLATFORM_MARKS = {
     'Facebook': '🟦', 
     'Instagram': '🟪', 
@@ -102,7 +102,11 @@ def save_standards(standards):
         json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    """判斷是否不需要填寫成效 (Threads 需填寫，故排除)"""
+    """
+    判斷是否不需要填寫成效。
+    注意：Threads 需要填寫數據(瀏覽數)，所以不包含在這裡。
+    此函數用於判斷 LINE@ 和 限動 等完全不需要填數據的類型。
+    """
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
@@ -214,8 +218,7 @@ if 'target_scroll_id' not in st.session_state:
 if 'scroll_to_list_item' not in st.session_state:
     st.session_state.scroll_to_list_item = False
 
-# --- 4. 自訂 CSS (視覺優化：緊湊 + 平台顏色) ---
-# 自動生成按鈕顏色的 CSS
+# --- 4. 自訂 CSS (視覺優化) ---
 calendar_button_css = ""
 for pf, mark in PLATFORM_MARKS.items():
     color = PLATFORM_COLORS.get(pf, '#888')
@@ -249,13 +252,11 @@ st.markdown(f"""
     <style>
     .stApp {{ background-color: #ffffff; }}
     
-    /* 縮減上方留白 */
     .block-container {{
-        padding-top: 1rem;
+        padding-top: 3rem;
         padding-bottom: 2rem;
     }}
     
-    /* KPI 標籤 */
     .kpi-badge {{ padding: 2px 6px; border-radius: 8px; font-weight: bold; font-size: 0.8em; display: inline-block; min-width: 50px; text-align: center;}}
     .purple {{ background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }}
     .green {{ background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }}
@@ -265,7 +266,6 @@ st.markdown(f"""
     
     .overdue-alert {{ color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }}
     
-    /* 平台標籤樣式 (列表用 - 移除 ICON 版) */
     .platform-badge-box {{
         font-weight: 800;
         padding: 4px 8px;
@@ -278,7 +278,6 @@ st.markdown(f"""
         margin-bottom: 2px;
     }}
     
-    /* 列表行樣式 (瘦身版：僅底線，間距縮小) */
     .post-row {{
         background-color: transparent;
         border-bottom: 1px solid #f3f4f6; 
@@ -290,7 +289,6 @@ st.markdown(f"""
         background-color: #f9fafb;
     }}
     
-    /* 今日高亮樣式 */
     .today-highlight {{
         background-color: #fffbeb;
         border-bottom: 2px solid #fcd34d;
@@ -298,7 +296,6 @@ st.markdown(f"""
         position: relative;
     }}
     
-    /* 滾動定位高亮 */
     @keyframes highlight-fade {{
         0% {{ background-color: #fef08a; }}
         100% {{ background-color: transparent; }}
@@ -312,12 +309,10 @@ st.markdown(f"""
     .row-text-lg {{ font-size: 1.05em; font-weight: bold; color: #1f2937; }}
     .row-text-md {{ font-size: 0.9em; color: #4b5563; }}
     
-    /* 日曆樣式 (緊湊化) */
     .cal-day-header {{ text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 2px; font-size: 0.9em; }}
     .cal-day-cell {{ min-height: 60px; padding: 2px; border-radius: 4px; font-size: 0.8em; border: 1px solid #f3f4f6; }}
     .cal-day-num {{ font-weight: bold; font-size: 0.9em; color: #374151; margin-bottom: 2px; margin-left: 2px; }}
     
-    /* 注入按鈕顏色樣式 */
     {calendar_button_css}
     </style>
 """, unsafe_allow_html=True)
@@ -352,10 +347,10 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1: 排程管理 ===
 with tab1:
-    # 錨點：用於編輯時滾動到頂部
+    # 錨點
     st.markdown("<div id='edit_top'></div>", unsafe_allow_html=True)
 
-    # 1. 編輯模式 -> 滾動到表單頂部
+    # 1. 編輯模式 -> 滾動
     if st.session_state.scroll_to_top:
         components.html(
             """
@@ -372,7 +367,7 @@ with tab1:
         )
         st.session_state.scroll_to_top = False
 
-    # 2. 日曆點擊 -> 滾動到列表項目
+    # 2. 日曆點擊 -> 滾動
     if st.session_state.scroll_to_list_item and st.session_state.target_scroll_id:
         target = st.session_state.target_scroll_id
         components.html(
@@ -639,7 +634,7 @@ with tab1:
 
     else:
         # --- 列表模式 ---
-        # 修正：初始化 display_data，防止 NameError
+        # 修正：初始化 display_data
         display_data = []
 
         col_sort1, col_sort2, col_count = st.columns([1, 1, 4])
@@ -659,7 +654,7 @@ with tab1:
         st.divider()
 
         if filtered_posts:
-            # 欄位定義：12 欄 (0~11) - 包含編輯和刪除
+            # 欄位定義：12 欄 (0~11) - 包含 0.4 的按鈕欄位
             col_list = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             
@@ -680,16 +675,17 @@ with tab1:
                     reach = safe_num(metrics.get('reach', 0))
                     
                     rate_str = "-"
-                    # Threads 不計算互動率，顯示「不計」
-                    if p['platform'] == 'Threads':
+                    # LINE/限動/Threads -> 顯示「不計」
+                    if is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
                         rate_str = "<span style='color:#bbb; font-size:0.9em'>🚫 不計</span>"
-                    elif reach > 0 and not is_metrics_disabled(p['platform'], p['postFormat']):
+                    elif reach > 0:
                         rate_str = f"{(eng/reach*100):.1f}%"
                     
                     post_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
                     due_date = post_date + timedelta(days=days_offset)
                     
                     # 判斷是否顯示鈴鐺
+                    # Threads 也需要檢查是否逾期未填數據
                     show_bell = False
                     if not is_metrics_disabled(p['platform'], p['postFormat']):
                         if today_date_obj >= due_date and reach == 0:
@@ -709,7 +705,7 @@ with tab1:
                 
                 with st.container():
                     st.markdown(f'<div class="{row_class}">', unsafe_allow_html=True)
-                    # 12 columns - MUST MATCH col_list above
+                    # 12 columns
                     cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     cols[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
@@ -726,21 +722,13 @@ with tab1:
                     cols[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
                     # 7日互動率
-                    if is_metrics_disabled(p['platform'], p['postFormat']):
-                         cols[7].markdown(str(rate7), unsafe_allow_html=True) # 不計
-                    elif p['platform'] == 'Threads':
-                         cols[7].markdown(str(rate7), unsafe_allow_html=True) # 不計
-                    elif show_bell_7:
+                    if show_bell_7 and p['platform'] != 'Threads':
                         cols[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     else:
                         cols[7].markdown(str(rate7), unsafe_allow_html=True)
 
                     # 30日互動率
-                    if is_metrics_disabled(p['platform'], p['postFormat']):
-                        cols[8].markdown(str(rate30), unsafe_allow_html=True)
-                    elif p['platform'] == 'Threads':
-                         cols[8].markdown(str(rate30), unsafe_allow_html=True)
-                    elif show_bell_30:
+                    if show_bell_30 and p['platform'] != 'Threads':
                         cols[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     else:
                         cols[8].markdown(str(rate30), unsafe_allow_html=True)
@@ -751,12 +739,13 @@ with tab1:
                     if cols[10].button("✏️", key=f"edit_{p['id']}", on_click=edit_post_callback, args=(p,)):
                         pass 
                     
-                    # Delete (Index 11) - Checked!
+                    # Delete (Index 11) - Confirmed 12 cols
                     if cols[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)):
                         pass
 
                     # 詳細數據展開區
                     expander_label = "📉 詳細數據"
+                    # Threads 若缺資料，外層顯示紅字鈴鐺
                     if p['platform'] == 'Threads' and (show_bell_7 or show_bell_30):
                          expander_label = "📉 詳細數據 :red[🔔 缺資料]" 
 
@@ -773,9 +762,12 @@ with tab1:
                         d_c4.metric(f"{warn30}30天-互動", f"{e30:,}")
                     
                     st.markdown('</div>', unsafe_allow_html=True)
+            
+            # 填入數據供下載
+            display_data = filtered_posts
 
             if display_data:
-                csv = pd.DataFrame(display_data).drop(columns=['_raw', 'ID'], errors='ignore').to_csv(index=False).encode('utf-8-sig')
+                csv = pd.DataFrame(display_data).drop(columns=['metrics7d', 'metrics1m'], errors='ignore').to_csv(index=False).encode('utf-8-sig')
                 st.download_button(label="📥 匯出 CSV", data=csv, file_name=f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv")
         else:
             st.info("目前沒有符合條件的排程資料。")
