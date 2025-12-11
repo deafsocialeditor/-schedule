@@ -137,7 +137,6 @@ def process_post_metrics(p):
 def edit_post_callback(post):
     st.session_state.editing_post = post
     st.session_state.scroll_to_top = True
-    # 日曆模式下點擊編輯，切回列表
     if st.session_state.view_mode_radio == "🗓️ 日曆模式":
          st.session_state.view_mode_radio = "📋 列表模式"
     
@@ -229,24 +228,25 @@ st.markdown(f"""
 # --- 5. Sidebar ---
 with st.sidebar:
     st.title("🔎 篩選條件")
-    filter_platform = st.selectbox("平台", ["All"] + PLATFORMS, index=0)
-    filter_owner = st.selectbox("負責人", ["All"] + POST_OWNERS, index=0)
-    filter_post_type = st.selectbox("貼文類型", ["All"] + MAIN_POST_TYPES, index=0)
-    filter_purpose = st.selectbox("目的", ["All"] + POST_PURPOSES, index=0)
-    filter_format = st.selectbox("形式", ["All"] + POST_FORMATS, index=0)
-    filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)")
+    # 修改：改為 multiselect 複選
+    filter_platform = st.multiselect("平台", PLATFORMS, key='filter_platform')
+    filter_owner = st.multiselect("負責人", POST_OWNERS, key='filter_owner')
+    filter_post_type = st.multiselect("貼文類型", MAIN_POST_TYPES, key='filter_post_type')
+    filter_purpose = st.multiselect("目的", POST_PURPOSES, key='filter_purpose')
+    filter_format = st.multiselect("形式", POST_FORMATS, key='filter_format')
+    filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)", key='filter_topic_keyword')
     
     st.divider()
-    date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True)
+    date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True, key='date_filter_type')
     if date_filter_type == "月":
         dates = [p['date'] for p in st.session_state.posts] if st.session_state.posts else [datetime.now().strftime("%Y-%m-%d")]
         months = sorted(list(set([d[:7] for d in dates])), reverse=True)
         if not months: months = [datetime.now().strftime("%Y-%m")]
-        selected_month = st.selectbox("選擇月份", months)
+        selected_month = st.selectbox("選擇月份", months, key='selected_month')
     else:
         c1, c2 = st.columns(2)
-        start_date = c1.date_input("開始", datetime.now().replace(day=1))
-        end_date = c2.date_input("結束", datetime.now())
+        start_date = c1.date_input("開始", datetime.now().replace(day=1), key='start_date')
+        end_date = c2.date_input("結束", datetime.now(), key='end_date')
 
 # --- 6. Main Page ---
 st.header("📅 2025社群排程與成效")
@@ -256,16 +256,19 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 with tab1:
     st.markdown("<div id='edit_top'></div>", unsafe_allow_html=True)
 
-    # JS Injection
+    # JS Injection for scrolling
     js_code = ""
     if st.session_state.scroll_to_top:
         js_code += """setTimeout(function() { try { var top = window.parent.document.getElementById('edit_top'); if (top) { top.scrollIntoView({behavior: 'smooth', block: 'start'}); } } catch (e) {} }, 150);"""
         st.session_state.scroll_to_top = False
+    
     if st.session_state.scroll_to_list_item and st.session_state.target_scroll_id:
         target = st.session_state.target_scroll_id
         js_code += f"""setTimeout(function() {{ try {{ var el = window.parent.document.getElementById('post_{target}'); if (el) {{ el.scrollIntoView({{behavior: 'smooth', block: 'center'}}); }} }} catch (e) {{}} }}, 300);"""
         st.session_state.scroll_to_list_item = False
-    if js_code: components.html(f"<script>{js_code}</script>", height=0)
+
+    if js_code:
+        components.html(f"<script>{js_code}</script>", height=0)
 
     # Editor
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
@@ -273,7 +276,8 @@ with tab1:
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
         
         # Init form
-        for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
+        for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 
+                  'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
             if k not in st.session_state:
                 if k == 'entry_date': st.session_state[k] = datetime.now()
                 elif 'platform_single' in k: st.session_state[k] = PLATFORMS[0]
@@ -281,6 +285,7 @@ with tab1:
                 elif 'type' in k: st.session_state[k] = MAIN_POST_TYPES[0]
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
                 else: st.session_state[k] = "" if 'owner' in k or 'po' in k or 'designer' in k or 'format' in k or 'topic' in k or 'subtype' in k else "-- 無 --"
+        
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares', 'entry_m1_reach', 'entry_m1_likes', 'entry_m1_comments', 'entry_m1_shares']:
              if k not in st.session_state: st.session_state[k] = 0.0
 
@@ -375,19 +380,19 @@ with tab1:
     view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed", key="view_mode_radio")
     st.write("")
 
-    # --- Filter Logic ---
+    # --- Filter Logic (Updated for Multi-select) ---
     filtered_posts = st.session_state.posts
     if date_filter_type == "月":
         filtered_posts = [p for p in filtered_posts if p['date'].startswith(selected_month)]
     else:
         filtered_posts = [p for p in filtered_posts if start_date <= datetime.strptime(p['date'], "%Y-%m-%d").date() <= end_date]
     
-    if filter_platform != "All": filtered_posts = [p for p in filtered_posts if p['platform'] == filter_platform]
-    if filter_owner != "All": filtered_posts = [p for p in filtered_posts if p['postOwner'] == filter_owner]
+    if filter_platform: filtered_posts = [p for p in filtered_posts if p['platform'] in filter_platform]
+    if filter_owner: filtered_posts = [p for p in filtered_posts if p['postOwner'] in filter_owner]
     if filter_topic_keyword: filtered_posts = [p for p in filtered_posts if filter_topic_keyword.lower() in p['topic'].lower()]
-    if filter_post_type != "All": filtered_posts = [p for p in filtered_posts if p['postType'] == filter_post_type]
-    if filter_purpose != "All": filtered_posts = [p for p in filtered_posts if p['postPurpose'] == filter_purpose]
-    if filter_format != "All": filtered_posts = [p for p in filtered_posts if p['postFormat'] == filter_format]
+    if filter_post_type: filtered_posts = [p for p in filtered_posts if p['postType'] in filter_post_type]
+    if filter_purpose: filtered_posts = [p for p in filtered_posts if p['postPurpose'] in filter_purpose]
+    if filter_format: filtered_posts = [p for p in filtered_posts if p['postFormat'] in filter_format]
 
     # --- Calendar View ---
     if view_mode == "🗓️ 日曆模式":
@@ -430,16 +435,19 @@ with tab1:
     
     # --- List View ---
     else:
-        # Pre-process data
+        # Pre-process data for sorting and display
+        # Use helper function to calculate metrics for sorting
         processed_data = [process_post_metrics(p) for p in filtered_posts]
         
         col_s1, col_s2, col_cnt = st.columns([1, 1, 4])
-        with col_s1: sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型", "7天瀏覽", "7天互動", "30天瀏覽", "30天互動"], index=0)
+        with col_s1: sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型", "7天觸及", "7天互動", "7天互動率", "30天觸及", "30天互動", "30天互動率"], index=0)
         with col_s2: sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0)
 
+        # Sort map updated with new metric keys from helper
         key_map = { 
             "日期": "_sort_date", "平台": "platform", "主題": "topic", "貼文類型": "postType",
-            "7天瀏覽": "r7", "7天互動": "e7", "30天瀏覽": "r30", "30天互動": "e30"
+            "7天觸及": "r7", "7天互動": "e7", "7天互動率": "rate7_val",
+            "30天觸及": "r30", "30天互動": "e30", "30天互動率": "rate30_val"
         }
         reverse = True if "降序" in sort_order else False
         processed_data.sort(key=lambda x: x[key_map[sort_by]], reverse=reverse)
@@ -450,7 +458,7 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - Confirmed
+            # Table Headers
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
