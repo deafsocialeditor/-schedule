@@ -95,7 +95,6 @@ def safe_num(val):
 def get_performance_label(platform, metrics, fmt, standards):
     """
     回傳: (標籤文字, 顏色class, Tooltip提示文字)
-    邏輯更新：移除「達標」二字，未達標保留。
     """
     if is_metrics_disabled(platform, fmt): 
         return "🚫 不計", "gray", "此形式/平台不需計算成效"
@@ -129,7 +128,7 @@ def get_performance_label(platform, metrics, fmt, standards):
         
         tooltip = f"高標: 觸及{int(h['reach'])} / 互動{int(h['engagement'])} (率{h_rt:.1f}%)\n標準: 觸及{int(s['reach'])} / 互動{int(s['engagement'])} (率{s_rt:.1f}%)\n低標: 觸及{int(l['reach'])} / 互動{int(l['engagement'])} (率{l_rt:.1f}%)"
         
-        # Check High
+        # Check High (Reach OR Eng OR Rate)
         if (reach >= h['reach']) or (eng >= h['engagement']) or (rate >= h_rt):
             if reach >= h['reach'] and eng >= h['engagement']: return "🏆 高標雙指標", "purple", tooltip
             if reach >= h['reach']: return "🏆 高標觸及", "purple", tooltip
@@ -153,6 +152,7 @@ def get_performance_label(platform, metrics, fmt, standards):
         return "🔴 未達標", "red", tooltip
         
     elif platform in ['Instagram', 'YouTube', '社團']:
+        # YouTube 現在跟 IG 一樣邏輯
         t_reach = std.get('reach', 0)
         t_eng = std.get('engagement', 0)
         t_rate = get_target_rate(t_reach, t_eng)
@@ -172,7 +172,6 @@ def get_performance_label(platform, metrics, fmt, standards):
     elif platform == 'Threads':
         t_reach = std.get('reach', 500)
         t_eng = std.get('engagement', 50)
-        # 讀取使用者自訂名稱
         l_reach = std.get('reach_label', '瀏覽')
         l_eng = std.get('engagement_label', '互動')
         
@@ -550,8 +549,8 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - FIXED
-            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+            # 12 Cols - FIXED (including 0.4 for delete)
+            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
             st.markdown("<hr style='margin:0.5em 0; border-top:1px dashed #ddd;'>", unsafe_allow_html=True)
@@ -570,7 +569,8 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                    # 12 Cols Config - FIXED
+                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
                     pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
@@ -585,12 +585,10 @@ with tab1:
                     
                     # 7D Rate
                     if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
-                    elif p['platform'] == 'YouTube': c[7].markdown("-", unsafe_allow_html=True)
                     else: c[7].markdown(p['rate7_str'], unsafe_allow_html=True)
 
                     # 30D Rate
                     if p['bell30'] and p['platform'] != 'Threads': c[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
-                    elif p['platform'] == 'YouTube': c[8].markdown("-", unsafe_allow_html=True)
                     else: c[8].markdown(p['rate30_str'], unsafe_allow_html=True)
                     
                     c[9].write(p['postOwner'])
