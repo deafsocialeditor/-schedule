@@ -8,25 +8,54 @@ import streamlit.components.v1 as components
 from datetime import datetime, timedelta
 
 # --- 1. 配置與常數 ---
-st.set_page_config(page_title="2025社群排程與成效", page_icon="📅", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(
+    page_title="2025社群排程與成效",
+    page_icon="📅",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
+# 檔案路徑
 DATA_FILE = "social_posts.json"
 STANDARDS_FILE = "social_standards.json"
 
+# 選項定義
 PLATFORMS = ['Facebook', 'Instagram', 'LINE@', 'YouTube', 'Threads', '社團']
 MAIN_POST_TYPES = ['喜餅', '彌月', '伴手禮', '社群互動', '圓夢計畫', '公告']
 SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
 
+# 專案負責人
 PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
 POST_OWNERS = ['一千', '楷曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
+
+# 定義廣告類型的目的
 AD_PURPOSE_LIST = ['廣告', '門市廣告']
 
-ICONS = {'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵', '社團': '👥', 'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'}
-PLATFORM_COLORS = {'Facebook': '#1877F2', 'Instagram': '#E1306C', 'LINE@': '#06C755', 'YouTube': '#FF0000', 'Threads': '#101010', '社團': '#F97316'}
-PLATFORM_MARKS = {'Facebook': '🟦', 'Instagram': '🟪', 'LINE@': '🟩', 'YouTube': '🟥', 'Threads': '⬛', '社團': '🟧'}
+# Icon Mapping (列表標籤用)
+ICONS = {
+    'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵',
+    '社團': '👥',
+    'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
+}
+
+# 平台顏色對照 (全域定義)
+PLATFORM_COLORS = {
+    'Facebook': '#1877F2',   # FB Blue
+    'Instagram': '#E1306C',  # IG Pink
+    'LINE@': '#06C755',      # LINE Green
+    'YouTube': '#FF0000',    # YT Red
+    'Threads': '#101010',    # Threads Black
+    '社團': '#F97316'        # Community Orange
+}
+
+# 平台隱藏標記 (用於 CSS 選擇器)
+PLATFORM_MARKS = {
+    'Facebook': '🟦', 'Instagram': '🟪', 'LINE@': '🟩', 
+    'YouTube': '🟥', 'Threads': '⬛', '社團': '🟧'
+}
 
 # --- 2. 資料處理函式 ---
 
@@ -43,7 +72,8 @@ def load_standards():
     defaults = {
         'Facebook': {'type': 'tiered', 'high': {'reach': 2000, 'rate': 5.0}, 'std': {'reach': 1500, 'rate': 3.0}, 'low': {'reach': 1000, 'rate': 1.5}},
         'Instagram': {'type': 'simple', 'reach': 900, 'engagement': 30, 'rate': 3.5},
-        'Threads': {'type': 'reference', 'reach': 84000, 'engagement': 1585, 'rate': 0},
+        # Threads 新增 label 欄位預設值
+        'Threads': {'type': 'reference', 'reach': 500, 'reach_label': '瀏覽目標', 'engagement': 50, 'engagement_label': '互動目標', 'rate': 0},
         'YouTube': {'type': 'simple', 'reach': 500, 'engagement': 0, 'rate': 2.0},
         'LINE@': {'type': 'simple', 'reach': 0, 'engagement': 0, 'rate': 0},
         '社團': {'type': 'simple', 'reach': 500, 'engagement': 20, 'rate': 4.0}
@@ -64,28 +94,60 @@ def safe_num(val):
     except: return 0.0
 
 def get_performance_label(platform, metrics, fmt, standards):
-    if is_metrics_disabled(platform, fmt): return "🚫 不計", "gray"
+    """
+    回傳: (標籤文字, 顏色class, Tooltip提示文字)
+    """
+    if is_metrics_disabled(platform, fmt): 
+        return "🚫 不計", "gray", "此形式/平台不需計算成效"
+    
     reach = safe_num(metrics.get('reach', 0))
-    if reach == 0: return "-", "gray"
+    if reach == 0: 
+        return "-", "gray", "尚未填寫數據"
     
     eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
     rate = (eng / reach) * 100
     std = standards.get(platform, {})
     
-    if not std: return "-", "gray"
+    if not std: 
+        return "-", "gray", "未設定標準"
     
+    label = "-"
+    color = "gray"
+    tooltip = ""
+
     if platform == 'Facebook':
-        if reach >= std['high']['reach'] and rate >= std['high']['rate']: return "🏆 高標", "purple"
-        if reach >= std['std']['reach'] and rate >= std['std']['rate']: return "✅ 標準", "green"
-        if reach >= std['low']['reach'] and rate >= std['low']['rate']: return "🤏 低標", "orange"
-        return "🔴 未達標", "red"
+        h, s, l = std['high'], std['std'], std['low']
+        tooltip = f"高標: 觸及{int(h['reach'])} / 率{h['rate']}%\n標準: 觸及{int(s['reach'])} / 率{s['rate']}%\n低標: 觸及{int(l['reach'])} / 率{l['rate']}%"
+        
+        if reach >= h['reach'] and rate >= h['rate']: label, color = "🏆 高標", "purple"
+        elif reach >= s['reach'] and rate >= s['rate']: label, color = "✅ 標準", "green"
+        elif reach >= l['reach'] and rate >= l['rate']: label, color = "🤏 低標", "orange"
+        else: label, color = "🔴 未達標", "red"
+        
     elif platform in ['Instagram', 'YouTube', '社團']:
-        if reach >= std.get('reach', 0) and rate >= std.get('rate', 0): return "✅ 達標", "green"
-        return "🔴 未達標", "red"
+        t_reach = std.get('reach', 0)
+        t_rate = std.get('rate', 0)
+        tooltip = f"目標: 觸及 {int(t_reach)} / 互動率 {t_rate}%"
+        
+        if reach >= t_reach and rate >= t_rate: label, color = "✅ 達標", "green"
+        else: label, color = "🔴 未達標", "red"
+
     elif platform == 'Threads':
-        if reach >= std.get('reach', 0): return "🔥 超標竿", "purple"
-        return "-", "gray"
-    return "-", "gray"
+        # Threads 讀取自訂標籤與數值
+        t_reach = std.get('reach', 500)
+        t_eng = std.get('engagement', 50)
+        l_reach = std.get('reach_label', '瀏覽目標')
+        l_eng = std.get('engagement_label', '互動目標')
+        
+        tooltip = f"{l_reach}: {int(t_reach)} / {l_eng}: {int(t_eng)}"
+        
+        pass_reach = reach >= t_reach
+        pass_eng = eng >= t_eng
+        
+        if pass_reach and pass_eng: label, color = "✅ 達標", "green"
+        else: label, color = "🔴 未達標", "red"
+
+    return label, color, tooltip
 
 def process_post_metrics(p):
     """預處理單篇貼文數據 (List View Helper)"""
@@ -204,23 +266,35 @@ st.markdown(f"""
     <style>
     .stApp {{ background-color: #ffffff; }}
     .block-container {{ padding-top: 3rem; padding-bottom: 2rem; }}
-    .kpi-badge {{ padding: 2px 6px; border-radius: 8px; font-weight: bold; font-size: 0.8em; display: inline-block; min-width: 50px; text-align: center;}}
+    
+    /* KPI Tooltip */
+    .kpi-badge {{ padding: 2px 6px; border-radius: 8px; font-weight: bold; font-size: 0.8em; display: inline-block; min-width: 50px; text-align: center; cursor: help; }}
+    
     .purple {{ background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }}
     .green {{ background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }}
     .orange {{ background-color: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }}
     .red {{ background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }}
     .gray {{ background-color: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }}
+    
     .overdue-alert {{ color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }}
+    
     .platform-badge-box {{ font-weight: 800; padding: 4px 8px; border-radius: 4px; color: white; font-size: 0.9em; display: inline-block; width: 100%; text-align: center; margin-bottom: 2px; }}
+    
     .post-row {{ background-color: transparent; border-bottom: 1px solid #f3f4f6; padding: 8px 0; margin-bottom: 0; transition: background-color 0.2s; }}
     .post-row:hover {{ background-color: #f9fafb; }}
+    
     .today-highlight {{ background-color: #fffbeb; border-bottom: 2px solid #fcd34d; padding: 8px 0; position: relative; }}
+    
     @keyframes highlight-fade {{ 0% {{ background-color: #fef08a; }} 100% {{ background-color: transparent; }} }}
     .scroll-highlight {{ animation: highlight-fade 2s ease-out; border-bottom: 2px solid #3b82f6 !important; padding: 8px 0; }}
+    
     .row-text-lg {{ font-size: 1.05em; font-weight: bold; color: #1f2937; }}
+    .row-text-md {{ font-size: 0.9em; color: #4b5563; }}
+    
     .cal-day-header {{ text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 2px; font-size: 0.9em; }}
     .cal-day-cell {{ min-height: 60px; padding: 2px; border-radius: 4px; font-size: 0.8em; border: 1px solid #f3f4f6; }}
     .cal-day-num {{ font-weight: bold; font-size: 0.9em; color: #374151; margin-bottom: 2px; margin-left: 2px; }}
+    
     {cal_btn_css}
     </style>
 """, unsafe_allow_html=True)
@@ -228,12 +302,11 @@ st.markdown(f"""
 # --- 5. Sidebar ---
 with st.sidebar:
     st.title("🔎 篩選條件")
-    # 修改：改為 multiselect 複選
-    filter_platform = st.multiselect("平台", PLATFORMS, key='filter_platform')
-    filter_owner = st.multiselect("負責人", POST_OWNERS, key='filter_owner')
-    filter_post_type = st.multiselect("貼文類型", MAIN_POST_TYPES, key='filter_post_type')
-    filter_purpose = st.multiselect("目的", POST_PURPOSES, key='filter_purpose')
-    filter_format = st.multiselect("形式", POST_FORMATS, key='filter_format')
+    filter_platform = st.multiselect("平台", ["All"] + PLATFORMS, key='filter_platform')
+    filter_owner = st.multiselect("負責人", ["All"] + POST_OWNERS, key='filter_owner')
+    filter_post_type = st.multiselect("貼文類型", ["All"] + MAIN_POST_TYPES, key='filter_post_type')
+    filter_purpose = st.multiselect("目的", ["All"] + POST_PURPOSES, key='filter_purpose')
+    filter_format = st.multiselect("形式", ["All"] + POST_FORMATS, key='filter_format')
     filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)", key='filter_topic_keyword')
     
     st.divider()
@@ -256,19 +329,16 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 with tab1:
     st.markdown("<div id='edit_top'></div>", unsafe_allow_html=True)
 
-    # JS Injection for scrolling
+    # JS Injection
     js_code = ""
     if st.session_state.scroll_to_top:
         js_code += """setTimeout(function() { try { var top = window.parent.document.getElementById('edit_top'); if (top) { top.scrollIntoView({behavior: 'smooth', block: 'start'}); } } catch (e) {} }, 150);"""
         st.session_state.scroll_to_top = False
-    
     if st.session_state.scroll_to_list_item and st.session_state.target_scroll_id:
         target = st.session_state.target_scroll_id
         js_code += f"""setTimeout(function() {{ try {{ var el = window.parent.document.getElementById('post_{target}'); if (el) {{ el.scrollIntoView({{behavior: 'smooth', block: 'center'}}); }} }} catch (e) {{}} }}, 300);"""
         st.session_state.scroll_to_list_item = False
-
-    if js_code:
-        components.html(f"<script>{js_code}</script>", height=0)
+    if js_code: components.html(f"<script>{js_code}</script>", height=0)
 
     # Editor
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
@@ -276,8 +346,7 @@ with tab1:
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
         
         # Init form
-        for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 
-                  'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
+        for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
             if k not in st.session_state:
                 if k == 'entry_date': st.session_state[k] = datetime.now()
                 elif 'platform_single' in k: st.session_state[k] = PLATFORMS[0]
@@ -285,7 +354,6 @@ with tab1:
                 elif 'type' in k: st.session_state[k] = MAIN_POST_TYPES[0]
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
                 else: st.session_state[k] = "" if 'owner' in k or 'po' in k or 'designer' in k or 'format' in k or 'topic' in k or 'subtype' in k else "-- 無 --"
-        
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares', 'entry_m1_reach', 'entry_m1_likes', 'entry_m1_comments', 'entry_m1_shares']:
              if k not in st.session_state: st.session_state[k] = 0.0
 
@@ -380,7 +448,7 @@ with tab1:
     view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed", key="view_mode_radio")
     st.write("")
 
-    # --- Filter Logic (Updated for Multi-select) ---
+    # --- Filter Logic ---
     filtered_posts = st.session_state.posts
     if date_filter_type == "月":
         filtered_posts = [p for p in filtered_posts if p['date'].startswith(selected_month)]
@@ -435,15 +503,13 @@ with tab1:
     
     # --- List View ---
     else:
-        # Pre-process data for sorting and display
-        # Use helper function to calculate metrics for sorting
+        # Pre-process data
         processed_data = [process_post_metrics(p) for p in filtered_posts]
         
         col_s1, col_s2, col_cnt = st.columns([1, 1, 4])
-        with col_s1: sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型", "7天觸及", "7天互動", "7天互動率", "30天觸及", "30天互動", "30天互動率"], index=0)
-        with col_s2: sort_order = st.selectbox("順序", ["升序 (低->高)", "降序 (高->低)"], index=0)
+        with col_s1: sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型", "7天觸及", "7天互動", "7天互動率", "30天觸及", "30天互動", "30天互動率"], index=0, key='sort_by')
+        with col_s2: sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0, key='sort_order')
 
-        # Sort map updated with new metric keys from helper
         key_map = { 
             "日期": "_sort_date", "平台": "platform", "主題": "topic", "貼文類型": "postType",
             "7天觸及": "r7", "7天互動": "e7", "7天互動率": "rate7_val",
@@ -458,7 +524,7 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # Table Headers
+            # 12 Cols - Confirmed
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -467,8 +533,9 @@ with tab1:
             today_s = datetime.now().strftime("%Y-%m-%d")
 
             for p in processed_data:
-                # Use calculated values
-                label, color = get_performance_label(p['platform'], p.get('metrics7d'), p['postFormat'], st.session_state.standards)
+                # Use calculated values, pass FULL tuple
+                label, color, tooltip = get_performance_label(p['platform'], p.get('metrics7d'), p['postFormat'], st.session_state.standards)
+                
                 is_today = (p['date'] == today_s)
                 is_target = (st.session_state.target_scroll_id == p['id'])
                 
@@ -487,7 +554,9 @@ with tab1:
                     c[3].write(p['postType'])
                     c[4].write(p['postPurpose'])
                     c[5].write(p['postFormat'])
-                    c[6].markdown(f"<span class='kpi-badge {color}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
+                    
+                    # Tooltip logic
+                    c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
                     # 7D Rate
                     if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
@@ -523,8 +592,8 @@ with tab1:
                 'date': '日期', 'platform': '平台', 'topic': '主題', 'postType': '類型', 
                 'postSubType': '子類型', 'postPurpose': '目的', 'postFormat': '形式',
                 'projectOwner': '專案負責人', 'postOwner': '貼文負責人', 'designer': '美編',
-                'r7': '7天瀏覽', 'e7': '7天互動', 'rate7_str': '7天互動率',
-                'r30': '30天瀏覽', 'e30': '30天互動', 'rate30_str': '30天互動率'
+                'r7': '7天瀏覽/觸及', 'e7': '7天互動', 'rate7_str': '7天互動率',
+                'r30': '30天瀏覽/觸及', 'e30': '30天互動', 'rate30_str': '30天互動率'
             }
             export_df = export_df.rename(columns=export_cols)
             # Select only relevant columns
@@ -539,7 +608,8 @@ with tab1:
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
-        c1, c2, c3 = st.columns(3)
+        # 4 cols layout
+        c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.subheader("Facebook")
             std['Facebook']['std']['reach'] = st.number_input("FB 標準觸及", value=std['Facebook']['std']['reach'])
@@ -549,6 +619,13 @@ with tab2:
             std['Instagram']['reach'] = st.number_input("IG 觸及", value=std['Instagram']['reach'])
             std['Instagram']['rate'] = st.number_input("IG 率(%)", value=std['Instagram']['rate'])
         with c3:
+            st.subheader("Threads")
+            # Threads 雙指標
+            std['Threads']['reach_label'] = st.text_input("指標1名稱", value=std.get('Threads',{}).get('reach_label', '瀏覽目標'))
+            std['Threads']['reach'] = st.number_input("指標1數值", value=std.get('Threads',{}).get('reach', 500))
+            std['Threads']['engagement_label'] = st.text_input("指標2名稱", value=std.get('Threads',{}).get('engagement_label', '互動目標'))
+            std['Threads']['engagement'] = st.number_input("指標2數值", value=std.get('Threads',{}).get('engagement', 50))
+        with c4:
             st.subheader("其他")
             std['YouTube']['reach'] = st.number_input("YT 觸及", value=std['YouTube']['reach'])
             std['社團']['reach'] = st.number_input("社團觸及", value=std['社團']['reach'])
