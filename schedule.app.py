@@ -120,9 +120,9 @@ def get_performance_label(platform, metrics, fmt, standards):
         return (reach >= target_r) or (eng >= target_e) or (rate >= target_rate)
 
     if platform == 'Facebook':
-        h = std['high']
-        s = std['std']
-        l = std['low']
+        h = std.get('high', {'reach': 2000, 'engagement': 100})
+        s = std.get('std', {'reach': 1500, 'engagement': 45})
+        l = std.get('low', {'reach': 1000, 'engagement': 15})
         
         h_rt = (h['engagement']/h['reach']*100) if h['reach']>0 else 0
         s_rt = (s['engagement']/s['reach']*100) if s['reach']>0 else 0
@@ -157,8 +157,12 @@ def get_performance_label(platform, metrics, fmt, standards):
         
         tooltip = f"目標: 觸及 {int(t_reach)} / 互動 {int(t_eng)} (率{t_rate:.1f}%)"
         
-        if check_pass(t_reach, t_eng): label, color = "✅ 達標", "green"
-        else: label, color = "🔴 未達標", "red"
+        if check_pass(t_reach, t_eng):
+            if (reach >= t_reach) and (eng >= t_eng): return "✅ 雙指標", "green", tooltip
+            if reach >= t_reach: return "✅ 觸及", "green", tooltip
+            if eng >= t_eng: return "✅ 互動", "green", tooltip
+            return "✅ 互動率", "green", tooltip
+        else: return "🔴 未達標", "red", tooltip
 
     elif platform == 'Threads':
         t_reach = std.get('reach', 500)
@@ -515,6 +519,7 @@ with tab1:
                             st.markdown(f"<div class='cal-day-cell' style='{bg}'><div class='cal-day-num'>{day}</div></div>", unsafe_allow_html=True)
                             day_p = [p for p in filtered_posts if p['date'] == date_s]
                             for p in day_p:
+                                # Bell Logic for Calendar
                                 show_bell = False
                                 if not is_metrics_disabled(p['platform'], p['postFormat']):
                                     p_d = datetime.strptime(p['date'], "%Y-%m-%d").date()
@@ -529,7 +534,7 @@ with tab1:
     # --- List View ---
     else:
         # Pre-process & Sort
-        display_data = [] # Init
+        display_data = [] 
         processed_data = [process_post_metrics(p) for p in filtered_posts]
         
         col_s1, col_s2, col_cnt = st.columns([1, 1, 4])
@@ -550,6 +555,7 @@ with tab1:
         st.divider()
 
         if processed_data:
+            # 12 Cols - FIXED [0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -579,12 +585,14 @@ with tab1:
                     c[5].write(p['postFormat'])
                     c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
+                    # 7D Rate
                     if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[7].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
                          c[7].markdown(p['rate7_str'], unsafe_allow_html=True) 
                     else: c[7].markdown(p['rate7_str'], unsafe_allow_html=True)
 
+                    # 30D Rate
                     if p['bell30'] and p['platform'] != 'Threads': c[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[8].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
@@ -631,6 +639,7 @@ with tab1:
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
+        # 4 cols layout
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.subheader("Facebook")
@@ -701,61 +710,69 @@ with tab2:
     st.markdown("### 📊 成效分析設定")
     c1, c2, c3 = st.columns(3)
     p_sel = c1.selectbox("1. 分析基準", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天" if x == "metrics7d" else "🌳 30天")
-    ad_sel = c2.selectbox("2. 內容", ["全部", "💰 廣告", "💬 非廣告"])
-    fmt_sel = c3.selectbox("3. 形式", ["全部", "🎬 短影音", "🖼️ 非短影音"])
-    
-    # Filter Logic
-    # Tab 2 now inherits sidebar filters (filtered_posts)
+    # Tab 2 inherits filters from filtered_posts directly
+    # Re-apply ad/format logic on top of filtered_posts
+    # Make sure filtered_posts exists
+    if 'posts' not in st.session_state: st.session_state.posts = load_data()
+    # Re-run filter logic to get base filtered list
+    # (Since tab logic runs top-down, filtered_posts from sidebar block is available)
+    # We copy it to avoid mutating original list
     target = [p for p in filtered_posts]
     
-    if "廣告" in ad_sel: target = [p for p in target if p.get('postPurpose') in AD_PURPOSE_LIST]
-    elif "非廣告" in ad_sel: target = [p for p in target if p.get('postPurpose') not in AD_PURPOSE_LIST]
+    # Local filters for Analysis
+    # Note: Removed "Content Type" and "Format" filters from UI as requested? 
+    # Wait, previous instruction was "use sidebar filters".
+    # But user prompt 4 says "Filter logic fix: IG/Threads hidden".
+    # I will rely solely on SIDEBAR filters for basic filtering.
+    # But Analysis page usually needs "Ad vs Non-Ad" split?
+    # User said "Analysis settings only keep Time Basis".
+    # So I removed Ad/Format selectors here. Everything is controlled by sidebar.
     
-    if "短影音" in fmt_sel: target = [p for p in target if p.get('postFormat') == '短影音']
-    elif "非短影音" in fmt_sel: target = [p for p in target if p.get('postFormat') != '短影音']
-
+    # Use sidebar filtered result directly
     cnt = len(target)
     
-    # Overview - Only Count
-    st.markdown("---")
-    st.metric("篩選總篇數", cnt)
+    # st.markdown("---")
+    # st.metric("篩選總篇數", cnt) # Moved to table footer
     
     st.markdown("### 🏆 各平台成效")
     if target:
         p_stats = []
         for pf in PLATFORMS:
-            # Skip LINE@ to add at the end
-            if pf == 'LINE@': continue
+            if pf == 'LINE@': continue # Skip LINE@ for now
             
             sub = [p for p in target if p['platform'] == pf]
             if not sub: continue
+            
             r = e = 0
             for p in sub:
                 if is_metrics_disabled(p['platform'], p['postFormat']): continue
                 m = p.get(p_sel, {})
-                # Threads/YT count reach normally now
+                # Threads/YT included
                 r += safe_num(m.get('reach', 0))
                 e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
+            
             rt = (e/r*100) if r > 0 else 0
             rt_s = f"{rt:.2f}%" if pf != 'Threads' else "-"
-            p_stats.append({"平台": pf, "篇數": len(sub), "總觸及": int(r), "總互動": int(e), "互動率": rt_s})
+            
+            p_stats.append({"平台": pf, "總觸及": int(r), "總互動": int(e), "互動率": rt_s, "篇數": len(sub)})
         
-        # Calculate LINE@ stats (should be dashed)
+        # LINE@ Row (if exists in filter)
         line_sub = [p for p in target if p['platform'] == 'LINE@']
+        # Remove LINE@ from table as requested "Don't show LINE@ stats"
+        # Wait, requirement 3 says "LINE@ move to end, show -". Okay.
         if line_sub:
-             p_stats.append({"平台": "LINE@", "篇數": len(line_sub), "總觸及": "-", "總互動": "-", "互動率": "-"})
+             p_stats.append({"平台": "LINE@", "總觸及": "-", "總互動": "-", "互動率": "-", "篇數": len(line_sub)})
 
-        # Add Total Row
+        # Total Row
         p_stats.append({
             "平台": "📊 總計", 
-            "篇數": cnt, 
             "總觸及": "-", 
             "總互動": "-", 
-            "互動率": "-"
+            "互動率": "-",
+            "篇數": cnt
         })
         
         df_stats = pd.DataFrame(p_stats)
-        # Reorder: Platform, Reach, Eng, Rate, Count
         df_stats = df_stats[["平台", "總觸及", "總互動", "互動率", "篇數"]]
         st.dataframe(df_stats, use_container_width=True, hide_index=True)
 
