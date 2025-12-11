@@ -69,18 +69,36 @@ def save_data(data):
     with open(DATA_FILE, 'w', encoding='utf-8') as f: json.dump(data, f, ensure_ascii=False, indent=4)
 
 def load_standards():
+    # 定義最新的預設值
     defaults = {
-        'Facebook': {'type': 'tiered', 'high': {'reach': 2000, 'engagement': 100}, 'std': {'reach': 1500, 'engagement': 45}, 'low': {'reach': 1000, 'engagement': 15}},
+        'Facebook': {
+            'type': 'tiered', 
+            'high': {'reach': 2000, 'engagement': 100}, 
+            'std': {'reach': 1500, 'engagement': 45}, 
+            'low': {'reach': 1000, 'engagement': 15}
+        },
         'Instagram': {'type': 'simple', 'reach': 900, 'engagement': 30},
         'Threads': {'type': 'reference', 'reach': 500, 'reach_label': '瀏覽', 'engagement': 50, 'engagement_label': '互動', 'rate': 0},
-        'YouTube': {'type': 'simple', 'reach': 500, 'engagement': 20}, # YT 恢復預設
+        'YouTube': {'type': 'simple', 'reach': 500, 'engagement': 20},
         'LINE@': {'type': 'simple', 'reach': 0, 'engagement': 0},
         '社團': {'type': 'simple', 'reach': 500, 'engagement': 20}
     }
+    
     if not os.path.exists(STANDARDS_FILE): return defaults
+    
     try:
-        with open(STANDARDS_FILE, 'r', encoding='utf-8') as f: return json.load(f)
-    except: return defaults
+        with open(STANDARDS_FILE, 'r', encoding='utf-8') as f: 
+            saved = json.load(f)
+            
+            # --- 自動修復機制 (防止 KeyError) ---
+            # 檢查 Facebook 是否包含新欄位 engagement，若無則回退到預設值
+            fb_high = saved.get('Facebook', {}).get('high', {})
+            if 'engagement' not in fb_high:
+                return defaults # 強制使用新結構
+            
+            return saved
+    except: 
+        return defaults
 
 def save_standards(standards):
     with open(STANDARDS_FILE, 'w', encoding='utf-8') as f: json.dump(standards, f, ensure_ascii=False, indent=4)
@@ -95,7 +113,7 @@ def safe_num(val):
 def get_performance_label(platform, metrics, fmt, standards):
     """
     回傳: (標籤文字, 顏色class, Tooltip提示文字)
-    邏輯更新：FB/IG/YT/社團 -> 觸及 OR 互動 OR 互動率 達標即算達標
+    邏輯：FB/IG/YT/社團 -> 觸及 OR 互動 OR 互動率 達標即算達標
     """
     if is_metrics_disabled(platform, fmt): 
         return "🚫 不計", "gray", "此形式/平台不需計算成效"
@@ -114,32 +132,38 @@ def get_performance_label(platform, metrics, fmt, standards):
     color = "gray"
     tooltip = ""
 
-    # Helper function for OR logic
+    # 輔助函式：檢查三項指標是否有一項達標 (OR Logic)
     def check_pass(target_r, target_e):
+        # 自動計算目標互動率
         target_rate = (target_e / target_r * 100) if target_r > 0 else 0
-        # 只要有一項達標
         return (reach >= target_r) or (eng >= target_e) or (rate >= target_rate)
 
     if platform == 'Facebook':
-        h = std['high']
-        s = std['std']
-        l = std['low']
+        # 安全獲取設定值，防止 KeyError
+        h = std.get('high', {'reach': 2000, 'engagement': 100})
+        s = std.get('std', {'reach': 1500, 'engagement': 45})
+        l = std.get('low', {'reach': 1000, 'engagement': 15})
         
-        # 計算目標互動率供 Tooltip 顯示
-        h_rate = (h['engagement']/h['reach']*100) if h['reach']>0 else 0
-        s_rate = (s['engagement']/s['reach']*100) if s['reach']>0 else 0
-        l_rate = (l['engagement']/l['reach']*100) if l['reach']>0 else 0
+        # 安全提取數值
+        h_r, h_e = safe_num(h.get('reach', 0)), safe_num(h.get('engagement', 0))
+        s_r, s_e = safe_num(s.get('reach', 0)), safe_num(s.get('engagement', 0))
+        l_r, l_e = safe_num(l.get('reach', 0)), safe_num(l.get('engagement', 0))
+
+        # 計算參考用互動率
+        h_rate = (h_e/h_r*100) if h_r>0 else 0
+        s_rate = (s_e/s_r*100) if s_r>0 else 0
+        l_rate = (l_e/l_r*100) if l_r>0 else 0
         
-        tooltip = f"高標: 觸及{int(h['reach'])} 或 互動{int(h['engagement'])} (率{h_rate:.1f}%)\n標準: 觸及{int(s['reach'])} 或 互動{int(s['engagement'])} (率{s_rate:.1f}%)\n低標: 觸及{int(l['reach'])} 或 互動{int(l['engagement'])} (率{l_rate:.1f}%)"
+        tooltip = f"高標: 觸及{int(h_r)} 或 互動{int(h_e)} (率{h_rate:.1f}%)\n標準: 觸及{int(s_r)} 或 互動{int(s_e)} (率{s_rate:.1f}%)\n低標: 觸及{int(l_r)} 或 互動{int(l_e)} (率{l_rate:.1f}%)"
         
-        if check_pass(h['reach'], h['engagement']): label, color = "🏆 高標", "purple"
-        elif check_pass(s['reach'], s['engagement']): label, color = "✅ 標準", "green"
-        elif check_pass(l['reach'], l['engagement']): label, color = "🤏 低標", "orange"
+        if check_pass(h_r, h_e): label, color = "🏆 高標", "purple"
+        elif check_pass(s_r, s_e): label, color = "✅ 標準", "green"
+        elif check_pass(l_r, l_e): label, color = "🤏 低標", "orange"
         else: label, color = "🔴 未達標", "red"
         
     elif platform in ['Instagram', 'YouTube', '社團']:
-        t_reach = std.get('reach', 0)
-        t_eng = std.get('engagement', 0)
+        t_reach = safe_num(std.get('reach', 0))
+        t_eng = safe_num(std.get('engagement', 0))
         t_rate = (t_eng / t_reach * 100) if t_reach > 0 else 0
         
         tooltip = f"目標: 觸及 {int(t_reach)} 或 互動 {int(t_eng)} (率{t_rate:.1f}%)"
@@ -148,9 +172,8 @@ def get_performance_label(platform, metrics, fmt, standards):
         else: label, color = "🔴 未達標", "red"
 
     elif platform == 'Threads':
-        # Threads 邏輯維持原樣 (雙指標擇一)
-        t_reach = std.get('reach', 500)
-        t_eng = std.get('engagement', 50)
+        t_reach = safe_num(std.get('reach', 500))
+        t_eng = safe_num(std.get('engagement', 50))
         l_reach = std.get('reach_label', '瀏覽')
         l_eng = std.get('engagement_label', '互動')
         
@@ -159,10 +182,14 @@ def get_performance_label(platform, metrics, fmt, standards):
         pass_reach = reach >= t_reach
         pass_eng = eng >= t_eng
         
-        if pass_reach and pass_eng: label, color = "✅ 雙指標達標", "green"
-        elif pass_reach: label, color = f"✅ {l_reach}達標", "green"
-        elif pass_eng: label, color = f"✅ {l_eng}達標", "green"
-        else: label, color = "🔴 未達標", "red"
+        if pass_reach and pass_eng:
+            label, color = "✅ 雙指標達標", "green"
+        elif pass_reach:
+            label, color = f"✅ {l_reach}達標", "green"
+        elif pass_eng:
+            label, color = f"✅ {l_eng}達標", "green"
+        else:
+            label, color = "🔴 未達標", "red"
 
     return label, color, tooltip
 
@@ -201,7 +228,8 @@ def process_post_metrics(p):
     
     bell7 = False
     bell30 = False
-    # YouTube / Threads 都要檢查
+    
+    # 只要不是 disabled，就要檢查數據是否填寫
     if not disabled: 
         if today >= due_date_7 and r7 == 0: bell7 = True
         if today >= due_date_30 and r30 == 0: bell30 = True
@@ -284,34 +312,23 @@ st.markdown(f"""
     <style>
     .stApp {{ background-color: #ffffff; }}
     .block-container {{ padding-top: 3rem; padding-bottom: 2rem; }}
-    
     .kpi-badge {{ padding: 2px 6px; border-radius: 8px; font-weight: bold; font-size: 0.8em; display: inline-block; min-width: 50px; text-align: center; cursor: help; }}
-    
     .purple {{ background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }}
     .green {{ background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }}
     .orange {{ background-color: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }}
     .red {{ background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }}
     .gray {{ background-color: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }}
-    
     .overdue-alert {{ color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }}
-    
     .platform-badge-box {{ font-weight: 800; padding: 4px 8px; border-radius: 4px; color: white; font-size: 0.9em; display: inline-block; width: 100%; text-align: center; margin-bottom: 2px; }}
-    
     .post-row {{ background-color: transparent; border-bottom: 1px solid #f3f4f6; padding: 8px 0; margin-bottom: 0; transition: background-color 0.2s; }}
     .post-row:hover {{ background-color: #f9fafb; }}
-    
     .today-highlight {{ background-color: #fffbeb; border-bottom: 2px solid #fcd34d; padding: 8px 0; position: relative; }}
-    
     @keyframes highlight-fade {{ 0% {{ background-color: #fef08a; }} 100% {{ background-color: transparent; }} }}
     .scroll-highlight {{ animation: highlight-fade 2s ease-out; border-bottom: 2px solid #3b82f6 !important; padding: 8px 0; }}
-    
     .row-text-lg {{ font-size: 1.05em; font-weight: bold; color: #1f2937; }}
-    .row-text-md {{ font-size: 0.9em; color: #4b5563; }}
-    
     .cal-day-header {{ text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 2px; font-size: 0.9em; }}
     .cal-day-cell {{ min-height: 60px; padding: 2px; border-radius: 4px; font-size: 0.8em; border: 1px solid #f3f4f6; }}
     .cal-day-num {{ font-weight: bold; font-size: 0.9em; color: #374151; margin-bottom: 2px; margin-left: 2px; }}
-    
     {cal_btn_css}
     </style>
 """, unsafe_allow_html=True)
@@ -508,7 +525,7 @@ with tab1:
                             for p in day_p:
                                 # Bell Logic for Calendar
                                 show_bell = False
-                                if not is_metrics_disabled(p['platform'], p['postFormat']) and p['platform'] != 'YouTube':
+                                if not is_metrics_disabled(p['platform'], p['postFormat']):
                                     p_d = datetime.strptime(p['date'], "%Y-%m-%d").date()
                                     if datetime.now().date() >= (p_d + timedelta(days=7)) and safe_num(p.get('metrics7d', {}).get('reach', 0)) == 0:
                                         show_bell = True
@@ -540,6 +557,7 @@ with tab1:
         st.divider()
 
         if processed_data:
+            # 12 Cols
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -548,7 +566,9 @@ with tab1:
             today_s = datetime.now().strftime("%Y-%m-%d")
 
             for p in processed_data:
+                # Use calculated values, pass FULL tuple
                 label, color, tooltip = get_performance_label(p['platform'], p.get('metrics7d'), p['postFormat'], st.session_state.standards)
+                
                 is_today = (p['date'] == today_s)
                 is_target = (st.session_state.target_scroll_id == p['id'])
                 
@@ -557,6 +577,7 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
+                    # 12 Cols
                     c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
@@ -572,12 +593,10 @@ with tab1:
                     
                     # 7D Rate
                     if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
-                    elif p['platform'] == 'YouTube': c[7].markdown("-", unsafe_allow_html=True)
                     else: c[7].markdown(p['rate7_str'], unsafe_allow_html=True)
 
                     # 30D Rate
                     if p['bell30'] and p['platform'] != 'Threads': c[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
-                    elif p['platform'] == 'YouTube': c[8].markdown("-", unsafe_allow_html=True)
                     else: c[8].markdown(p['rate30_str'], unsafe_allow_html=True)
                     
                     c[9].write(p['postOwner'])
@@ -589,7 +608,6 @@ with tab1:
                     if p['platform'] == 'Threads' and (p['bell7'] or p['bell30']): exp_label += " :red[🔔 缺資料]"
                     
                     with st.expander(exp_label):
-                        # YouTube 
                         rl = "瀏覽" if p['platform'] == 'Threads' else "觸及"
                         dc = st.columns(4)
                         w7 = "🔔 " if (p['bell7'] and p['platform'] == 'Threads') else ""
@@ -602,6 +620,7 @@ with tab1:
             
             # Export CSV
             export_df = pd.DataFrame(processed_data)
+            # Rename columns for export
             export_cols = {
                 'date': '日期', 'platform': '平台', 'topic': '主題', 'postType': '類型', 
                 'postSubType': '子類型', 'postPurpose': '目的', 'postFormat': '形式',
@@ -610,6 +629,7 @@ with tab1:
                 'r30': '30天瀏覽/觸及', 'e30': '30天互動', 'rate30_str': '30天互動率'
             }
             export_df = export_df.rename(columns=export_cols)
+            # Select only relevant columns
             final_cols = [c for c in export_cols.values() if c in export_df.columns]
             csv = export_df[final_cols].to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 匯出 CSV", csv, f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
@@ -621,40 +641,70 @@ with tab1:
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
+        # 4 cols layout
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.subheader("Facebook")
-            std['Facebook']['std']['reach'] = st.number_input("FB 標準觸及", value=std['Facebook']['std']['reach'])
-            std['Facebook']['std']['engagement'] = st.number_input("FB 標準互動", value=std['Facebook']['std'].get('engagement', 45))
+            # 顯示互動率參考 (High/Std/Low)
+            st.markdown("**高標**")
+            h_reach = st.number_input("FB高標 觸及", value=std['Facebook']['high']['reach'], key='fb_h_r')
+            h_eng = st.number_input("FB高標 互動", value=std['Facebook']['high']['engagement'], key='fb_h_e')
+            h_rate = (h_eng/h_reach*100) if h_reach>0 else 0
+            st.caption(f"預估互動率: {h_rate:.2f}%")
             
-            # 顯示預估率
-            s_reach = std['Facebook']['std']['reach']
-            s_eng = std['Facebook']['std']['engagement']
-            s_rate = (s_eng/s_reach*100) if s_reach > 0 else 0
+            st.markdown("**標準**")
+            s_reach = st.number_input("FB標準 觸及", value=std['Facebook']['std']['reach'], key='fb_s_r')
+            s_eng = st.number_input("FB標準 互動", value=std['Facebook']['std']['engagement'], key='fb_s_e')
+            s_rate = (s_eng/s_reach*100) if s_reach>0 else 0
             st.caption(f"預估互動率: {s_rate:.2f}%")
+
+            st.markdown("**低標**")
+            l_reach = st.number_input("FB低標 觸及", value=std['Facebook']['low']['reach'], key='fb_l_r')
+            l_eng = st.number_input("FB低標 互動", value=std['Facebook']['low']['engagement'], key='fb_l_e')
+            l_rate = (l_eng/l_reach*100) if l_reach>0 else 0
+            st.caption(f"預估互動率: {l_rate:.2f}%")
+            
+            # Update Dict
+            std['Facebook']['high'] = {'reach': h_reach, 'engagement': h_eng}
+            std['Facebook']['std'] = {'reach': s_reach, 'engagement': s_eng}
+            std['Facebook']['low'] = {'reach': l_reach, 'engagement': l_eng}
 
         with c2:
             st.subheader("Instagram")
-            std['Instagram']['reach'] = st.number_input("IG 觸及", value=std['Instagram']['reach'])
-            std['Instagram']['engagement'] = st.number_input("IG 互動", value=std['Instagram']['engagement'])
-            
-            ig_r = std['Instagram']['reach']
-            ig_e = std['Instagram']['engagement']
-            ig_rt = (ig_e/ig_r*100) if ig_r>0 else 0
-            st.caption(f"預估互動率: {ig_rt:.2f}%")
+            ig_reach = st.number_input("IG 觸及目標", value=std['Instagram']['reach'])
+            ig_eng = st.number_input("IG 互動目標", value=std['Instagram']['engagement'])
+            ig_rate = (ig_eng/ig_reach*100) if ig_reach>0 else 0
+            st.caption(f"預估互動率: {ig_rate:.2f}%")
+            std['Instagram']['reach'] = ig_reach
+            std['Instagram']['engagement'] = ig_eng
 
         with c3:
             st.subheader("Threads")
-            std['Threads']['reach_label'] = st.text_input("指標1名稱", value=std.get('Threads',{}).get('reach_label', '瀏覽'))
-            std['Threads']['reach'] = st.number_input("指標1數值", value=std.get('Threads',{}).get('reach', 500))
-            std['Threads']['engagement_label'] = st.text_input("指標2名稱", value=std.get('Threads',{}).get('engagement_label', '互動'))
-            std['Threads']['engagement'] = st.number_input("指標2數值", value=std.get('Threads',{}).get('engagement', 50))
+            tr_reach_lbl = st.text_input("指標1名稱", value=std.get('Threads',{}).get('reach_label', '瀏覽'))
+            tr_reach = st.number_input("指標1數值", value=std.get('Threads',{}).get('reach', 500))
+            tr_eng_lbl = st.text_input("指標2名稱", value=std.get('Threads',{}).get('engagement_label', '互動'))
+            tr_eng = st.number_input("指標2數值", value=std.get('Threads',{}).get('engagement', 50))
+            
+            std['Threads']['reach_label'] = tr_reach_lbl
+            std['Threads']['reach'] = tr_reach
+            std['Threads']['engagement_label'] = tr_eng_lbl
+            std['Threads']['engagement'] = tr_eng
+
         with c4:
             st.subheader("其他")
-            std['YouTube']['reach'] = st.number_input("YT 觸及", value=std['YouTube']['reach'])
-            std['YouTube']['engagement'] = st.number_input("YT 互動", value=std['YouTube']['engagement'])
-            std['社團']['reach'] = st.number_input("社團觸及", value=std['社團']['reach'])
-            std['社團']['engagement'] = st.number_input("社團互動", value=std['社團']['engagement'])
+            # YT
+            st.markdown("**YouTube**")
+            yt_reach = st.number_input("YT 觸及", value=std['YouTube']['reach'])
+            yt_eng = st.number_input("YT 互動", value=std['YouTube']['engagement'])
+            std['YouTube']['reach'] = yt_reach
+            std['YouTube']['engagement'] = yt_eng
+
+            # 社團
+            st.markdown("**社團**")
+            grp_reach = st.number_input("社團觸及", value=std['社團']['reach'])
+            grp_eng = st.number_input("社團互動", value=std['社團']['engagement'])
+            std['社團']['reach'] = grp_reach
+            std['社團']['engagement'] = grp_eng
         
         if st.button("儲存設定"):
             st.session_state.standards = std
@@ -667,20 +717,23 @@ with tab2:
     ad_sel = c2.selectbox("2. 內容", ["全部", "💰 廣告", "💬 非廣告"])
     fmt_sel = c3.selectbox("3. 形式", ["全部", "🎬 短影音", "🖼️ 非短影音"])
     
+    # Filter Logic for Analysis
     target = st.session_state.posts
     if "廣告" in ad_sel: target = [p for p in target if p['postPurpose'] in AD_PURPOSE_LIST]
     elif "非廣告" in ad_sel: target = [p for p in target if p['postPurpose'] not in AD_PURPOSE_LIST]
     if "短影音" in fmt_sel: target = [p for p in target if p['postFormat'] == '短影音']
     elif "非短影音" in fmt_sel: target = [p for p in target if p['postFormat'] != '短影音']
 
+    # Calc Stats
     cnt = len(target)
     reach_sum = 0
     eng_sum = 0
     for p in target:
         if is_metrics_disabled(p['platform'], p['postFormat']): continue
         m = p.get(p_sel, {})
-        if p['platform'] not in ['Threads', 'LINE@', 'YouTube']: reach_sum += safe_num(m.get('reach', 0))
-        if p['platform'] not in ['LINE@', 'YouTube']: eng_sum += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
+        # Threads 互動率不計，但互動數可計入總和
+        if p['platform'] not in ['Threads', 'LINE@']: reach_sum += safe_num(m.get('reach', 0))
+        if p['platform'] != 'LINE@': eng_sum += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
     
     rate_avg = (eng_sum / reach_sum * 100) if reach_sum > 0 else 0
     
@@ -695,14 +748,12 @@ with tab2:
     if target:
         p_stats = []
         for pf in PLATFORMS:
-            # YouTube 回歸顯示
             sub = [p for p in target if p['platform'] == pf]
             if not sub: continue
             r = e = 0
             for p in sub:
                 if is_metrics_disabled(p['platform'], p['postFormat']): continue
                 m = p.get(p_sel, {})
-                # Threads 不算入觸及與互動率 (但算互動數)
                 if pf != 'Threads': r += safe_num(m.get('reach', 0))
                 e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
             rt = (e/r*100) if r > 0 else 0
