@@ -57,7 +57,6 @@ def save_standards(standards):
     with open(STANDARDS_FILE, 'w', encoding='utf-8') as f: json.dump(standards, f, ensure_ascii=False, indent=4)
 
 def is_metrics_disabled(platform, fmt):
-    # Threads 需填數據，故不在此列
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
@@ -65,7 +64,7 @@ def safe_num(val):
     except: return 0.0
 
 def get_performance_label(platform, metrics, fmt, standards):
-    if is_metrics_disabled(platform, fmt): return "-", "gray"
+    if is_metrics_disabled(platform, fmt): return "🚫 不計", "gray"
     reach = safe_num(metrics.get('reach', 0))
     if reach == 0: return "-", "gray"
     
@@ -89,24 +88,18 @@ def get_performance_label(platform, metrics, fmt, standards):
     return "-", "gray"
 
 def process_post_metrics(p):
-    """
-    預處理單篇貼文的數據，用於排序與匯出。
-    回傳字典包含原始數據與計算後的數值。
-    """
+    """預處理單篇貼文數據 (List View Helper)"""
     m7 = p.get('metrics7d', {})
     m30 = p.get('metrics1m', {})
     
-    # 數值提取
     r7 = safe_num(m7.get('reach', 0))
     e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
     r30 = safe_num(m30.get('reach', 0))
     e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
     
-    # 計算互動率 (數值，用於排序)
     rate7_val = (e7 / r7 * 100) if r7 > 0 else 0
     rate30_val = (e30 / r30 * 100) if r30 > 0 else 0
     
-    # 顯示字串處理
     disabled = is_metrics_disabled(p['platform'], p['postFormat'])
     is_threads = p['platform'] == 'Threads'
     
@@ -120,21 +113,21 @@ def process_post_metrics(p):
         rate7_str = f"{rate7_val:.1f}%"
         if r30 > 0: rate30_str = f"{rate30_val:.1f}%"
 
-    # 鈴鐺判斷
     today = datetime.now().date()
-    p_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
+    try: p_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
+    except: p_date = today
+    
     due_date_7 = p_date + timedelta(days=7)
     due_date_30 = p_date + timedelta(days=30)
     
-    # 只要不是 disabled (包含 Threads)，且過期未填 (Reach=0)，就亮燈
     bell7 = False
     bell30 = False
-    if not disabled:
+    if not disabled: # Threads 也要檢查是否有填數字
         if today >= due_date_7 and r7 == 0: bell7 = True
         if today >= due_date_30 and r30 == 0: bell30 = True
 
     return {
-        **p, # 展開原始欄位
+        **p,
         'r7': int(r7), 'e7': int(e7), 'rate7_val': rate7_val, 'rate7_str': rate7_str, 'bell7': bell7,
         'r30': int(r30), 'e30': int(e30), 'rate30_val': rate30_val, 'rate30_str': rate30_str, 'bell30': bell30,
         '_sort_date': p['date']
@@ -144,6 +137,9 @@ def process_post_metrics(p):
 def edit_post_callback(post):
     st.session_state.editing_post = post
     st.session_state.scroll_to_top = True
+    # 日曆模式下點擊編輯，切回列表
+    if st.session_state.view_mode_radio == "🗓️ 日曆模式":
+         st.session_state.view_mode_radio = "📋 列表模式"
     
     try: st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
     except: st.session_state['entry_date'] = datetime.now().date()
@@ -260,28 +256,24 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 with tab1:
     st.markdown("<div id='edit_top'></div>", unsafe_allow_html=True)
 
-    # JS Injection for scrolling
+    # JS Injection
     js_code = ""
     if st.session_state.scroll_to_top:
         js_code += """setTimeout(function() { try { var top = window.parent.document.getElementById('edit_top'); if (top) { top.scrollIntoView({behavior: 'smooth', block: 'start'}); } } catch (e) {} }, 150);"""
         st.session_state.scroll_to_top = False
-    
     if st.session_state.scroll_to_list_item and st.session_state.target_scroll_id:
         target = st.session_state.target_scroll_id
         js_code += f"""setTimeout(function() {{ try {{ var el = window.parent.document.getElementById('post_{target}'); if (el) {{ el.scrollIntoView({{behavior: 'smooth', block: 'center'}}); }} }} catch (e) {{}} }}, 300);"""
         st.session_state.scroll_to_list_item = False
-
-    if js_code:
-        components.html(f"<script>{js_code}</script>", height=0)
+    if js_code: components.html(f"<script>{js_code}</script>", height=0)
 
     # Editor
     with st.expander("✨ 新增/編輯 貼文", expanded=st.session_state.editing_post is not None):
         is_edit = st.session_state.editing_post is not None
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
         
-        # Initialize form state if missing
-        for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 
-                  'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
+        # Init form
+        for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
             if k not in st.session_state:
                 if k == 'entry_date': st.session_state[k] = datetime.now()
                 elif 'platform_single' in k: st.session_state[k] = PLATFORMS[0]
@@ -289,7 +281,6 @@ with tab1:
                 elif 'type' in k: st.session_state[k] = MAIN_POST_TYPES[0]
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
                 else: st.session_state[k] = "" if 'owner' in k or 'po' in k or 'designer' in k or 'format' in k or 'topic' in k or 'subtype' in k else "-- 無 --"
-        
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares', 'entry_m1_reach', 'entry_m1_likes', 'entry_m1_comments', 'entry_m1_shares']:
              if k not in st.session_state: st.session_state[k] = 0.0
 
@@ -439,15 +430,13 @@ with tab1:
     
     # --- List View ---
     else:
-        # Pre-process data for sorting and display
-        # Use helper function to calculate metrics for sorting
+        # Pre-process data
         processed_data = [process_post_metrics(p) for p in filtered_posts]
         
         col_s1, col_s2, col_cnt = st.columns([1, 1, 4])
         with col_s1: sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型", "7天瀏覽", "7天互動", "30天瀏覽", "30天互動"], index=0)
         with col_s2: sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0)
 
-        # Sort map updated with new metric keys from helper
         key_map = { 
             "日期": "_sort_date", "平台": "platform", "主題": "topic", "貼文類型": "postType",
             "7天瀏覽": "r7", "7天互動": "e7", "30天瀏覽": "r30", "30天互動": "e30"
@@ -461,7 +450,7 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # Table Headers
+            # 12 Cols - Confirmed
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -593,9 +582,36 @@ with tab2:
     m3.metric("總互動", f"{int(eng_sum):,}")
     m4.metric("平均互動率", f"{rate_avg:.2f}%")
     
+    st.markdown("### 🏆 各平台成效")
+    if target:
+        p_stats = []
+        for pf in PLATFORMS:
+            sub = [p for p in target if p['platform'] == pf]
+            if not sub: continue
+            r = e = 0
+            for p in sub:
+                if is_metrics_disabled(p['platform'], p['postFormat']): continue
+                m = p.get(p_sel, {})
+                if pf != 'Threads': r += safe_num(m.get('reach', 0))
+                e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
+            rt = (e/r*100) if r > 0 else 0
+            rt_s = f"{rt:.2f}%" if pf != 'Threads' else "-"
+            p_stats.append({"平台": pf, "篇數": len(sub), "總觸及": int(r), "總互動": int(e), "互動率": rt_s})
+        st.dataframe(pd.DataFrame(p_stats), use_container_width=True)
+
     st.markdown("### 🍰 類型分佈")
+    view_type = st.radio("顯示模式", ["📄 表格模式", "📊 圖表模式"], horizontal=True)
     if target:
         df = pd.DataFrame(target)
         if not df.empty:
-            piv = pd.crosstab(df['platform'], df['postType'])
-            st.bar_chart(piv)
+            piv = pd.crosstab(df['platform'], df['postType'], margins=True, margins_name="總計")
+            # Reindex
+            ex_pf = [p for p in PLATFORMS if p in piv.index]
+            final_idx = ex_pf + ["總計"]
+            piv = piv.reindex(final_idx)
+
+            if view_type == "📄 表格模式":
+                st.dataframe(piv, use_container_width=True)
+            else:
+                c_df = piv.drop(index="總計", columns="總計", errors='ignore')
+                st.bar_chart(c_df)
