@@ -548,6 +548,7 @@ with tab1:
         st.divider()
 
         if processed_data:
+            # 12 Cols - FIXED [0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -607,6 +608,7 @@ with tab1:
                         dc[3].metric(f"{w30}30天-互動", f"{p['e30']:,}")
                     st.markdown('</div>', unsafe_allow_html=True)
             
+            # Export CSV
             export_df = pd.DataFrame(processed_data)
             export_cols = {
                 'date': '日期', 'platform': '平台', 'topic': '主題', 'postType': '類型', 
@@ -709,14 +711,13 @@ with tab2:
 
     cnt = len(target)
     
-    # Overview
+    # Overview - Only Count
     st.markdown("---")
     st.metric("篩選總篇數", cnt)
     
     st.markdown("### 🏆 各平台成效")
     if target:
         p_stats = []
-        # Calculate standard stats
         for pf in PLATFORMS:
             # Skip LINE@ to add it at the end
             if pf == 'LINE@': continue
@@ -727,29 +728,28 @@ with tab2:
             for p in sub:
                 if is_metrics_disabled(p['platform'], p['postFormat']): continue
                 m = p.get(p_sel, {})
-                if pf != 'Threads': r += safe_num(m.get('reach', 0))
+                r += safe_num(m.get('reach', 0)) # Threads/YT included
                 e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
             rt = (e/r*100) if r > 0 else 0
             rt_s = f"{rt:.2f}%" if pf != 'Threads' else "-"
-            p_stats.append({"平台": pf, "篇數": len(sub), "總觸及": int(r), "總互動": int(e), "互動率": rt_s})
+            p_stats.append({"平台": pf, "總觸及": int(r), "總互動": int(e), "互動率": rt_s, "篇數": len(sub)})
         
-        # Calculate LINE@ stats (should be empty/dashed)
+        # LINE@ Row (Empty stats)
         line_sub = [p for p in target if p['platform'] == 'LINE@']
         if line_sub:
-             p_stats.append({"平台": "LINE@", "篇數": len(line_sub), "總觸及": "-", "總互動": "-", "互動率": "-"})
+             p_stats.append({"平台": "LINE@", "總觸及": "-", "總互動": "-", "互動率": "-", "篇數": len(line_sub)})
 
-        # Add Total Row
+        # Total Row
         p_stats.append({
             "平台": "📊 總計", 
-            "篇數": cnt, 
             "總觸及": "-", 
             "總互動": "-", 
-            "互動率": "-"
+            "互動率": "-",
+            "篇數": cnt
         })
         
         df_stats = pd.DataFrame(p_stats)
-        df_stats = df_stats[["平台", "篇數", "總觸及", "總互動", "互動率"]]
-        st.dataframe(df_stats, use_container_width=True)
+        st.dataframe(df_stats, use_container_width=True, hide_index=True)
 
     st.markdown("### 🍰 類型分佈")
     view_type = st.radio("顯示模式", ["📄 表格模式", "📊 圖表模式"], horizontal=True)
