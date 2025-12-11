@@ -528,6 +528,8 @@ with tab1:
     
     # --- List View ---
     else:
+        # Pre-process & Sort
+        display_data = [] # Init
         processed_data = [process_post_metrics(p) for p in filtered_posts]
         
         col_s1, col_s2, col_cnt = st.columns([1, 1, 4])
@@ -548,7 +550,6 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - FIXED [0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -609,7 +610,8 @@ with tab1:
                     st.markdown('</div>', unsafe_allow_html=True)
             
             # Export CSV
-            export_df = pd.DataFrame(processed_data)
+            display_data = processed_data
+            export_df = pd.DataFrame(display_data)
             export_cols = {
                 'date': '日期', 'platform': '平台', 'topic': '主題', 'postType': '類型', 
                 'postSubType': '子類型', 'postPurpose': '目的', 'postFormat': '形式',
@@ -703,11 +705,14 @@ with tab2:
     fmt_sel = c3.selectbox("3. 形式", ["全部", "🎬 短影音", "🖼️ 非短影音"])
     
     # Filter Logic
-    target = st.session_state.posts
-    if "廣告" in ad_sel: target = [p for p in target if p['postPurpose'] in AD_PURPOSE_LIST]
-    elif "非廣告" in ad_sel: target = [p for p in target if p['postPurpose'] not in AD_PURPOSE_LIST]
-    if "短影音" in fmt_sel: target = [p for p in target if p['postFormat'] == '短影音']
-    elif "非短影音" in fmt_sel: target = [p for p in target if p['postFormat'] != '短影音']
+    # Tab 2 now inherits sidebar filters (filtered_posts)
+    target = [p for p in filtered_posts]
+    
+    if "廣告" in ad_sel: target = [p for p in target if p.get('postPurpose') in AD_PURPOSE_LIST]
+    elif "非廣告" in ad_sel: target = [p for p in target if p.get('postPurpose') not in AD_PURPOSE_LIST]
+    
+    if "短影音" in fmt_sel: target = [p for p in target if p.get('postFormat') == '短影音']
+    elif "非短影音" in fmt_sel: target = [p for p in target if p.get('postFormat') != '短影音']
 
     cnt = len(target)
     
@@ -719,7 +724,7 @@ with tab2:
     if target:
         p_stats = []
         for pf in PLATFORMS:
-            # Skip LINE@ to add it at the end
+            # Skip LINE@ to add at the end
             if pf == 'LINE@': continue
             
             sub = [p for p in target if p['platform'] == pf]
@@ -728,27 +733,30 @@ with tab2:
             for p in sub:
                 if is_metrics_disabled(p['platform'], p['postFormat']): continue
                 m = p.get(p_sel, {})
-                r += safe_num(m.get('reach', 0)) # Threads/YT included
+                # Threads/YT count reach normally now
+                r += safe_num(m.get('reach', 0))
                 e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
             rt = (e/r*100) if r > 0 else 0
             rt_s = f"{rt:.2f}%" if pf != 'Threads' else "-"
-            p_stats.append({"平台": pf, "總觸及": int(r), "總互動": int(e), "互動率": rt_s, "篇數": len(sub)})
+            p_stats.append({"平台": pf, "篇數": len(sub), "總觸及": int(r), "總互動": int(e), "互動率": rt_s})
         
-        # LINE@ Row (Empty stats)
+        # Calculate LINE@ stats (should be dashed)
         line_sub = [p for p in target if p['platform'] == 'LINE@']
         if line_sub:
-             p_stats.append({"平台": "LINE@", "總觸及": "-", "總互動": "-", "互動率": "-", "篇數": len(line_sub)})
+             p_stats.append({"平台": "LINE@", "篇數": len(line_sub), "總觸及": "-", "總互動": "-", "互動率": "-"})
 
-        # Total Row
+        # Add Total Row
         p_stats.append({
             "平台": "📊 總計", 
+            "篇數": cnt, 
             "總觸及": "-", 
             "總互動": "-", 
-            "互動率": "-",
-            "篇數": cnt
+            "互動率": "-"
         })
         
         df_stats = pd.DataFrame(p_stats)
+        # Reorder: Platform, Reach, Eng, Rate, Count
+        df_stats = df_stats[["平台", "總觸及", "總互動", "互動率", "篇數"]]
         st.dataframe(df_stats, use_container_width=True, hide_index=True)
 
     st.markdown("### 🍰 類型分佈")
