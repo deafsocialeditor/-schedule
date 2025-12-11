@@ -95,7 +95,7 @@ def safe_num(val):
 def get_performance_label(platform, metrics, fmt, standards):
     """
     回傳: (標籤文字, 顏色class, Tooltip提示文字)
-    邏輯：細分顯示 觸及/互動/互動率 哪項達標
+    邏輯更新：移除「達標」二字，未達標保留。
     """
     if is_metrics_disabled(platform, fmt): 
         return "🚫 不計", "gray", "此形式/平台不需計算成效"
@@ -123,7 +123,6 @@ def get_performance_label(platform, metrics, fmt, standards):
         s = std['std']
         l = std['low']
         
-        # Tooltip info
         h_rt = get_target_rate(h['reach'], h['engagement'])
         s_rt = get_target_rate(s['reach'], s['engagement'])
         l_rt = get_target_rate(l['reach'], l['engagement'])
@@ -132,24 +131,24 @@ def get_performance_label(platform, metrics, fmt, standards):
         
         # Check High
         if (reach >= h['reach']) or (eng >= h['engagement']) or (rate >= h_rt):
-            if reach >= h['reach'] and eng >= h['engagement']: return "🏆 高標雙達標", "purple", tooltip
-            if reach >= h['reach']: return "🏆 高標觸及達標", "purple", tooltip
-            if eng >= h['engagement']: return "🏆 高標互動達標", "purple", tooltip
-            return "🏆 高標互動率達標", "purple", tooltip
+            if reach >= h['reach'] and eng >= h['engagement']: return "🏆 高標雙指標", "purple", tooltip
+            if reach >= h['reach']: return "🏆 高標觸及", "purple", tooltip
+            if eng >= h['engagement']: return "🏆 高標互動", "purple", tooltip
+            return "🏆 高標互動率", "purple", tooltip
             
         # Check Std
         if (reach >= s['reach']) or (eng >= s['engagement']) or (rate >= s_rt):
-            if reach >= s['reach'] and eng >= s['engagement']: return "✅ 標準雙達標", "green", tooltip
-            if reach >= s['reach']: return "✅ 標準觸及達標", "green", tooltip
-            if eng >= s['engagement']: return "✅ 標準互動達標", "green", tooltip
-            return "✅ 標準互動率達標", "green", tooltip
+            if reach >= s['reach'] and eng >= s['engagement']: return "✅ 標準雙指標", "green", tooltip
+            if reach >= s['reach']: return "✅ 標準觸及", "green", tooltip
+            if eng >= s['engagement']: return "✅ 標準互動", "green", tooltip
+            return "✅ 標準互動率", "green", tooltip
 
         # Check Low
         if (reach >= l['reach']) or (eng >= l['engagement']) or (rate >= l_rt):
-            if reach >= l['reach'] and eng >= l['engagement']: return "🤏 低標雙達標", "orange", tooltip
-            if reach >= l['reach']: return "🤏 低標觸及達標", "orange", tooltip
-            if eng >= l['engagement']: return "🤏 低標互動達標", "orange", tooltip
-            return "🤏 低標互動率達標", "orange", tooltip
+            if reach >= l['reach'] and eng >= l['engagement']: return "🤏 低標雙指標", "orange", tooltip
+            if reach >= l['reach']: return "🤏 低標觸及", "orange", tooltip
+            if eng >= l['engagement']: return "🤏 低標互動", "orange", tooltip
+            return "🤏 低標互動率", "orange", tooltip
             
         return "🔴 未達標", "red", tooltip
         
@@ -164,15 +163,16 @@ def get_performance_label(platform, metrics, fmt, standards):
         pass_eng = eng >= t_eng
         pass_rate = rate >= t_rate
         
-        if pass_reach and pass_eng: return "✅ 雙指標達標", "green", tooltip
-        elif pass_reach: return "✅ 觸及達標", "green", tooltip
-        elif pass_eng: return "✅ 互動達標", "green", tooltip
-        elif pass_rate: return "✅ 互動率達標", "green", tooltip
+        if pass_reach and pass_eng: return "✅ 雙指標", "green", tooltip
+        elif pass_reach: return "✅ 觸及", "green", tooltip
+        elif pass_eng: return "✅ 互動", "green", tooltip
+        elif pass_rate: return "✅ 互動率", "green", tooltip
         else: return "🔴 未達標", "red", tooltip
 
     elif platform == 'Threads':
         t_reach = std.get('reach', 500)
         t_eng = std.get('engagement', 50)
+        # 讀取使用者自訂名稱
         l_reach = std.get('reach_label', '瀏覽')
         l_eng = std.get('engagement_label', '互動')
         
@@ -181,9 +181,9 @@ def get_performance_label(platform, metrics, fmt, standards):
         pass_reach = reach >= t_reach
         pass_eng = eng >= t_eng
         
-        if pass_reach and pass_eng: return "✅ 雙指標達標", "green", tooltip
-        elif pass_reach: return f"✅ {l_reach}達標", "green", tooltip
-        elif pass_eng: return f"✅ {l_eng}達標", "green", tooltip
+        if pass_reach and pass_eng: return "✅ 雙指標", "green", tooltip
+        elif pass_reach: return f"✅ {l_reach}", "green", tooltip
+        elif pass_eng: return f"✅ {l_eng}", "green", tooltip
         else: return "🔴 未達標", "red", tooltip
 
     return label, color, tooltip
@@ -550,8 +550,8 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - CONFIRMED
-            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+            # 12 Cols - FIXED
+            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
             st.markdown("<hr style='margin:0.5em 0; border-top:1px dashed #ddd;'>", unsafe_allow_html=True)
@@ -559,6 +559,7 @@ with tab1:
             today_s = datetime.now().strftime("%Y-%m-%d")
 
             for p in processed_data:
+                # Use calculated values, pass FULL tuple
                 label, color, tooltip = get_performance_label(p['platform'], p.get('metrics7d'), p['postFormat'], st.session_state.standards)
                 
                 is_today = (p['date'] == today_s)
@@ -569,8 +570,7 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                    # 12 Cols Config - FIXED
-                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
                     pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
@@ -602,6 +602,7 @@ with tab1:
                     if p['platform'] == 'Threads' and (p['bell7'] or p['bell30']): exp_label += " :red[🔔 缺資料]"
                     
                     with st.expander(exp_label):
+                        # YouTube 正常顯示
                         rl = "瀏覽" if p['platform'] == 'Threads' else "觸及"
                         dc = st.columns(4)
                         w7 = "🔔 " if (p['bell7'] and p['platform'] == 'Threads') else ""
@@ -614,6 +615,7 @@ with tab1:
             
             # Export CSV
             export_df = pd.DataFrame(processed_data)
+            # Rename columns for export
             export_cols = {
                 'date': '日期', 'platform': '平台', 'topic': '主題', 'postType': '類型', 
                 'postSubType': '子類型', 'postPurpose': '目的', 'postFormat': '形式',
@@ -622,6 +624,7 @@ with tab1:
                 'r30': '30天瀏覽/觸及', 'e30': '30天互動', 'rate30_str': '30天互動率'
             }
             export_df = export_df.rename(columns=export_cols)
+            # Select only relevant columns
             final_cols = [c for c in export_cols.values() if c in export_df.columns]
             csv = export_df[final_cols].to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 匯出 CSV", csv, f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
@@ -637,6 +640,7 @@ with tab2:
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.subheader("Facebook")
+            # 顯示互動率參考 (High/Std/Low)
             st.markdown("**高標**")
             h_reach = st.number_input("FB高標 觸及", value=std['Facebook']['high']['reach'], key='fb_h_r')
             h_eng = st.number_input("FB高標 互動", value=std['Facebook']['high'].get('engagement', 100), key='fb_h_e')
