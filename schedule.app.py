@@ -453,7 +453,6 @@ with tab1:
                     for i, d in enumerate(st.session_state.posts):
                         if d['id'] == target_edit_id: st.session_state.posts[i] = {**d, **base, 'platform': p}; break
                     st.session_state.editing_post = None
-                    # 編輯後定位回該則貼文
                     st.session_state.target_scroll_id = target_edit_id
                     st.success("已更新！")
                 else:
@@ -463,13 +462,10 @@ with tab1:
                         new_p = {'id': new_id, 'date': date_str, 'platform': p, 'topic': f_topic, 'postType': f_type, 'postSubType': f_subtype if f_subtype != "-- 無 --" else "", 'postPurpose': platform_purposes[p], 'postFormat': f_format, 'projectOwner': f_po, 'postOwner': f_owner, 'designer': f_designer, 'status': 'published', 'metrics7d': metrics_input['metrics7d'], 'metrics1m': metrics_input['metrics1m']}
                         if is_metrics_disabled(p, f_format): new_p['metrics7d'] = {}; new_p['metrics1m'] = {}
                         st.session_state.posts.append(new_p)
-                    # 新增後定位到新貼文
                     st.session_state.target_scroll_id = target_new_id
                     st.success("已新增！")
                 
                 save_data(st.session_state.posts)
-                
-                # 儲存後操作：強制切換回列表模式，並開啟捲動
                 st.session_state.view_mode_radio = "📋 列表模式"
                 st.session_state.scroll_to_list_item = True
                 
@@ -529,7 +525,7 @@ with tab1:
                             st.markdown(f"<div class='cal-day-cell' style='{bg}'><div class='cal-day-num'>{day}</div></div>", unsafe_allow_html=True)
                             day_p = [p for p in filtered_posts if p['date'] == date_s]
                             for p in day_p:
-                                # Bell Logic for Calendar
+                                # Bell Logic
                                 show_bell = False
                                 if not is_metrics_disabled(p['platform'], p['postFormat']):
                                     p_d = datetime.strptime(p['date'], "%Y-%m-%d").date()
@@ -563,7 +559,7 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - FIXED (including 0.4 for delete)
+            # 12 Cols - FIXED
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -572,7 +568,6 @@ with tab1:
             today_s = datetime.now().strftime("%Y-%m-%d")
 
             for p in processed_data:
-                # Use calculated values, pass FULL tuple
                 label, color, tooltip = get_performance_label(p['platform'], p.get('metrics7d'), p['postFormat'], st.session_state.standards)
                 
                 is_today = (p['date'] == today_s)
@@ -583,7 +578,7 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                    # 12 Cols Config - FIXED
+                    # 12 Cols
                     c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
@@ -593,29 +588,24 @@ with tab1:
                     c[3].write(p['postType'])
                     c[4].write(p['postPurpose'])
                     c[5].write(p['postFormat'])
-                    
-                    # Tooltip logic
                     c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
-                    # 7D Rate
                     if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[7].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
-                         c[7].markdown(p['rate7_str'], unsafe_allow_html=True) # 不計
+                         c[7].markdown(p['rate7_str'], unsafe_allow_html=True) 
                     else: c[7].markdown(p['rate7_str'], unsafe_allow_html=True)
 
-                    # 30D Rate
                     if p['bell30'] and p['platform'] != 'Threads': c[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[8].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
-                         c[8].markdown(p['rate30_str'], unsafe_allow_html=True) # 不計
+                         c[8].markdown(p['rate30_str'], unsafe_allow_html=True)
                     else: c[8].markdown(p['rate30_str'], unsafe_allow_html=True)
                     
                     c[9].write(p['postOwner'])
                     if c[10].button("✏️", key=f"ed_{p['id']}", on_click=edit_post_callback, args=(p,)): pass
                     if c[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)): pass
 
-                    # Expander
                     exp_label = "📉 詳細數據"
                     if p['platform'] == 'Threads' and (p['bell7'] or p['bell30']): exp_label += " :red[🔔 缺資料]"
                     
@@ -630,9 +620,7 @@ with tab1:
                         dc[3].metric(f"{w30}30天-互動", f"{p['e30']:,}")
                     st.markdown('</div>', unsafe_allow_html=True)
             
-            # Export CSV
             export_df = pd.DataFrame(processed_data)
-            # Rename columns for export
             export_cols = {
                 'date': '日期', 'platform': '平台', 'topic': '主題', 'postType': '類型', 
                 'postSubType': '子類型', 'postPurpose': '目的', 'postFormat': '形式',
@@ -641,7 +629,6 @@ with tab1:
                 'r30': '30天瀏覽/觸及', 'e30': '30天互動', 'rate30_str': '30天互動率'
             }
             export_df = export_df.rename(columns=export_cols)
-            # Select only relevant columns
             final_cols = [c for c in export_cols.values() if c in export_df.columns]
             csv = export_df[final_cols].to_csv(index=False).encode('utf-8-sig')
             st.download_button("📥 匯出 CSV", csv, f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
@@ -653,11 +640,9 @@ with tab1:
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
-        # 4 cols layout
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.subheader("Facebook")
-            # 顯示互動率參考 (High/Std/Low)
             st.markdown("**高標**")
             h_reach = st.number_input("FB高標 觸及", value=std['Facebook']['high']['reach'], key='fb_h_r')
             h_eng = st.number_input("FB高標 互動", value=std['Facebook']['high'].get('engagement', 100), key='fb_h_e')
@@ -683,7 +668,6 @@ with tab2:
             ig_eng = st.number_input("IG 互動目標", value=std['Instagram'].get('engagement', 30))
             ig_rt = (ig_eng/ig_reach*100) if ig_reach>0 else 0
             st.caption(f"預估互動率: {ig_rt:.2f}%")
-            
             std['Instagram']['engagement'] = ig_eng
             std['Instagram']['reach'] = ig_reach
 
@@ -744,7 +728,6 @@ with tab2:
     st.markdown("### 🏆 各平台成效")
     if target:
         p_stats = []
-        # Calculate platform stats
         for pf in PLATFORMS:
             sub = [p for p in target if p['platform'] == pf]
             if not sub: continue
@@ -752,7 +735,6 @@ with tab2:
             for p in sub:
                 if is_metrics_disabled(p['platform'], p['postFormat']): continue
                 m = p.get(p_sel, {})
-                # Threads is included now
                 if pf != 'Threads': r += safe_num(m.get('reach', 0))
                 e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
             rt = (e/r*100) if r > 0 else 0
@@ -768,9 +750,7 @@ with tab2:
             "互動率": "-"
         })
         
-        # Reorder columns
         df_stats = pd.DataFrame(p_stats)
-        # Ensure column order
         df_stats = df_stats[["平台", "總觸及", "總互動", "互動率", "篇數"]]
         st.dataframe(df_stats, use_container_width=True)
 
