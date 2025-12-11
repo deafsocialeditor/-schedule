@@ -441,7 +441,7 @@ with tab1:
         
         col_s1, col_s2, col_cnt = st.columns([1, 1, 4])
         with col_s1: sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型", "7天觸及", "7天互動", "7天互動率", "30天觸及", "30天互動", "30天互動率"], index=0)
-        with col_s2: sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0)
+        with col_s2: sort_order = st.selectbox("順序", ["升序 (低->高)", "降序 (高->低)"], index=0)
 
         # Sort map updated with new metric keys from helper
         key_map = { 
