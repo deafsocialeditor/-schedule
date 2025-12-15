@@ -108,7 +108,10 @@ def safe_num(val):
     except: return 0.0
 
 def get_performance_label(platform, metrics, fmt, standards):
-    """回傳: (標籤文字, 顏色class, Tooltip提示文字)"""
+    """
+    回傳: (標籤文字, 顏色class, Tooltip提示文字)
+    邏輯：只要一項達標 (觸及 OR 互動 OR 互動率) 即算達標
+    """
     if is_metrics_disabled(platform, fmt): 
         return "🚫 不計", "gray", "此形式/平台不需計算成效"
     
@@ -126,6 +129,7 @@ def get_performance_label(platform, metrics, fmt, standards):
     color = "gray"
     tooltip = ""
 
+    # Helper function for OR logic
     def check_pass(target_r, target_e):
         target_rate = (target_e / target_r * 100) if target_r > 0 else 0
         return (reach >= target_r) or (eng >= target_e) or (rate >= target_rate)
@@ -355,14 +359,32 @@ with st.sidebar:
                     except: continue
                 
                 if df is not None:
+                    # 1. 清理欄位名稱 (去除前後空白)
+                    df.columns = df.columns.str.strip()
+                    # 2. 欄位對照
                     df.rename(columns=CSV_IMPORT_MAP, inplace=True)
+                    # 3. 處理 NaN
                     df = df.fillna(0)
                     
+                    # 4. 強制日期格式轉換
+                    if 'date' in df.columns:
+                        # 將各種格式的日期轉為 YYYY-MM-DD
+                        df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
+                    
                     new_posts = []
+                    min_date, max_date = None, None
+                    
                     for _, row in df.iterrows():
                         r_date = str(row.get('date', ''))
                         r_topic = str(row.get('topic', ''))
-                        if r_date == '0' or r_topic == '0' or r_date == '' or r_topic == '': continue
+                        
+                        # 忽略日期無效的資料 (NaT 轉字串會變成 'NaT' 或 'nan')
+                        if r_date in ['NaT', 'nan', '0', '']: continue
+                        if r_topic == '0' or r_topic == '': continue
+                        
+                        # 計算日期範圍以供提示
+                        if not min_date or r_date < min_date: min_date = r_date
+                        if not max_date or r_date > max_date: max_date = r_date
                         
                         m7 = {
                             'reach': safe_num(row.get('metrics7d_reach', 0)),
@@ -395,8 +417,10 @@ with st.sidebar:
                     if new_posts:
                         st.session_state.posts.extend(new_posts)
                         save_data(st.session_state.posts)
-                        st.success(f"成功匯入 {len(new_posts)} 筆 CSV 資料！")
+                        st.success(f"成功匯入 {len(new_posts)} 筆資料！\n資料日期範圍：{min_date} 至 {max_date}")
                         st.rerun()
+                    else:
+                        st.warning("沒有讀取到有效資料，請檢查 CSV 的日期格式是否正確。")
                 else:
                     st.error("無法讀取檔案，請檢查編碼 (建議 UTF-8 或 Big5)")
         except Exception as e:
@@ -644,7 +668,6 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                    # 12 Cols
                     c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
