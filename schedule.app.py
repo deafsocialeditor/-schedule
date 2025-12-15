@@ -426,6 +426,15 @@ with st.sidebar:
         c1, c2 = st.columns(2)
         start_date = c1.date_input("開始", datetime.now().replace(day=1), key='start_date')
         end_date = c2.date_input("結束", datetime.now(), key='end_date')
+    
+    st.divider()
+    with st.expander("🗑️ 危險區域：清空資料"):
+        st.warning("警告：此操作將刪除所有貼文資料，且無法復原！")
+        if st.button("🧨 確認清空所有資料", type="primary", use_container_width=True):
+            st.session_state.posts = []
+            save_data([])
+            st.success("資料已清空！")
+            st.rerun()
 
 # --- 6. Main Page ---
 st.header("📅 2025社群排程與成效")
@@ -643,7 +652,7 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - FIXED
+            # 12 Cols - FIXED [0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
