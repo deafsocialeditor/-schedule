@@ -6,6 +6,7 @@ import uuid
 import calendar
 import streamlit.components.v1 as components
 from datetime import datetime, timedelta
+import io
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
@@ -33,6 +34,15 @@ DESIGNERS = ['千惟', '靖嬙']
 
 # 定義廣告類型的目的
 AD_PURPOSE_LIST = ['廣告', '門市廣告']
+
+# CSV 欄位對照 (匯入用：中文 -> 英文 key)
+CSV_IMPORT_MAP = {
+    '日期': 'date', '平台': 'platform', '主題': 'topic', '類型': 'postType',
+    '子類型': 'postSubType', '目的': 'postPurpose', '形式': 'postFormat',
+    '專案負責人': 'projectOwner', '貼文負責人': 'postOwner', '美編': 'designer',
+    '7天瀏覽/觸及': 'metrics7d_reach', '7天互動': 'metrics7d_eng',
+    '30天瀏覽/觸及': 'metrics1m_reach', '30天互動': 'metrics1m_eng'
+}
 
 # Icon Mapping (列表標籤用)
 ICONS = {
@@ -93,10 +103,7 @@ def safe_num(val):
     except: return 0.0
 
 def get_performance_label(platform, metrics, fmt, standards):
-    """
-    回傳: (標籤文字, 顏色class, Tooltip提示文字)
-    邏輯：只要一項達標 (觸及 OR 互動 OR 互動率) 即算達標
-    """
+    """KPI 標籤計算 (防崩潰版)"""
     if is_metrics_disabled(platform, fmt): 
         return "🚫 不計", "gray", "此形式/平台不需計算成效"
     
@@ -114,7 +121,6 @@ def get_performance_label(platform, metrics, fmt, standards):
     color = "gray"
     tooltip = ""
 
-    # Helper function for OR logic
     def check_pass(target_r, target_e):
         target_rate = (target_e / target_r * 100) if target_r > 0 else 0
         return (reach >= target_r) or (eng >= target_e) or (rate >= target_rate)
@@ -124,30 +130,18 @@ def get_performance_label(platform, metrics, fmt, standards):
         s = std.get('std', {'reach': 1500, 'engagement': 45})
         l = std.get('low', {'reach': 1000, 'engagement': 15})
         
-        h_rt = (h['engagement']/h['reach']*100) if h['reach']>0 else 0
-        s_rt = (s['engagement']/s['reach']*100) if s['reach']>0 else 0
-        l_rt = (l['engagement']/l['reach']*100) if l['reach']>0 else 0
+        h_rt = (h.get('engagement', 0)/h.get('reach', 1)*100) if h.get('reach', 0)>0 else 0
+        s_rt = (s.get('engagement', 0)/s.get('reach', 1)*100) if s.get('reach', 0)>0 else 0
+        l_rt = (l.get('engagement', 0)/l.get('reach', 1)*100) if l.get('reach', 0)>0 else 0
         
-        tooltip = f"高標: 觸及{int(h['reach'])} / 互動{int(h['engagement'])} (率{h_rt:.1f}%)\n標準: 觸及{int(s['reach'])} / 互動{int(s['engagement'])} (率{s_rt:.1f}%)\n低標: 觸及{int(l['reach'])} / 互動{int(l['engagement'])} (率{l_rt:.1f}%)"
+        tooltip = f"高標: 觸及{int(h.get('reach',0))} / 互動{int(h.get('engagement',0))} (率{h_rt:.1f}%)\n標準: 觸及{int(s.get('reach',0))} / 互動{int(s.get('engagement',0))} (率{s_rt:.1f}%)\n低標: 觸及{int(l.get('reach',0))} / 互動{int(l.get('engagement',0))} (率{l_rt:.1f}%)"
         
-        if check_pass(h['reach'], h['engagement']):
-            if reach >= h['reach'] and eng >= h['engagement']: return "🏆 高標雙指標", "purple", tooltip
-            if reach >= h['reach']: return "🏆 高標觸及", "purple", tooltip
-            if eng >= h['engagement']: return "🏆 高標互動", "purple", tooltip
-            return "🏆 高標互動率", "purple", tooltip
-            
-        elif check_pass(s['reach'], s['engagement']):
-            if reach >= s['reach'] and eng >= s['engagement']: return "✅ 標準雙指標", "green", tooltip
-            if reach >= s['reach']: return "✅ 標準觸及", "green", tooltip
-            if eng >= s['engagement']: return "✅ 標準互動", "green", tooltip
-            return "✅ 標準互動率", "green", tooltip
-
-        elif check_pass(l['reach'], l['engagement']):
-            if reach >= l['reach'] and eng >= l['engagement']: return "🤏 低標雙指標", "orange", tooltip
-            if reach >= l['reach']: return "🤏 低標觸及", "orange", tooltip
-            if eng >= l['engagement']: return "🤏 低標互動", "orange", tooltip
-            return "🤏 低標互動率", "orange", tooltip
-            
+        if check_pass(h.get('reach', 2000), h.get('engagement', 100)):
+            return "🏆 高標雙指標" if (reach >= h.get('reach') and eng >= h.get('engagement')) else ("🏆 高標觸及" if reach >= h.get('reach') else "🏆 高標互動"), "purple", tooltip
+        elif check_pass(s.get('reach', 1500), s.get('engagement', 45)):
+            return "✅ 標準雙指標" if (reach >= s.get('reach') and eng >= s.get('engagement')) else ("✅ 標準觸及" if reach >= s.get('reach') else "✅ 標準互動"), "green", tooltip
+        elif check_pass(l.get('reach', 1000), l.get('engagement', 15)):
+            return "🤏 低標雙指標" if (reach >= l.get('reach') and eng >= l.get('engagement')) else ("🤏 低標觸及" if reach >= l.get('reach') else "🤏 低標互動"), "orange", tooltip
         else: return "🔴 未達標", "red", tooltip
         
     elif platform in ['Instagram', 'YouTube', '社團']:
@@ -157,11 +151,7 @@ def get_performance_label(platform, metrics, fmt, standards):
         
         tooltip = f"目標: 觸及 {int(t_reach)} / 互動 {int(t_eng)} (率{t_rate:.1f}%)"
         
-        if check_pass(t_reach, t_eng):
-            if (reach >= t_reach) and (eng >= t_eng): return "✅ 雙指標", "green", tooltip
-            if reach >= t_reach: return "✅ 觸及", "green", tooltip
-            if eng >= t_eng: return "✅ 互動", "green", tooltip
-            return "✅ 互動率", "green", tooltip
+        if check_pass(t_reach, t_eng): return "✅ 達標", "green", tooltip
         else: return "🔴 未達標", "red", tooltip
 
     elif platform == 'Threads':
@@ -175,15 +165,15 @@ def get_performance_label(platform, metrics, fmt, standards):
         pass_reach = reach >= t_reach
         pass_eng = eng >= t_eng
         
-        if pass_reach and pass_eng: label, color = "✅ 雙指標", "green"
-        elif pass_reach: label, color = f"✅ {l_reach}", "green"
-        elif pass_eng: label, color = f"✅ {l_eng}", "green"
-        else: label, color = "🔴 未達標", "red"
+        if pass_reach and pass_eng: return "✅ 雙指標", "green", tooltip
+        elif pass_reach: return f"✅ {l_reach}", "green", tooltip
+        elif pass_eng: return f"✅ {l_eng}", "green", tooltip
+        else: return "🔴 未達標", "red", tooltip
 
     return label, color, tooltip
 
 def process_post_metrics(p):
-    """預處理單篇貼文數據 (List View Helper)"""
+    """預處理單篇貼文數據"""
     m7 = p.get('metrics7d', {})
     m30 = p.get('metrics1m', {})
     
@@ -195,8 +185,8 @@ def process_post_metrics(p):
     rate7_val = (e7 / r7 * 100) if r7 > 0 else 0
     rate30_val = (e30 / r30 * 100) if r30 > 0 else 0
     
-    disabled = is_metrics_disabled(p['platform'], p['postFormat'])
-    is_threads = p['platform'] == 'Threads'
+    disabled = is_metrics_disabled(p.get('platform'), p.get('postFormat'))
+    is_threads = p.get('platform') == 'Threads'
     
     rate7_str = "-"
     rate30_str = "-"
@@ -209,7 +199,7 @@ def process_post_metrics(p):
         if r30 > 0: rate30_str = f"{rate30_val:.1f}%"
 
     today = datetime.now().date()
-    try: p_date = datetime.strptime(p['date'], "%Y-%m-%d").date()
+    try: p_date = datetime.strptime(p.get('date', ''), "%Y-%m-%d").date()
     except: p_date = today
     
     due_date_7 = p_date + timedelta(days=7)
@@ -225,7 +215,7 @@ def process_post_metrics(p):
         **p,
         'r7': int(r7), 'e7': int(e7), 'rate7_val': rate7_val, 'rate7_str': rate7_str, 'bell7': bell7,
         'r30': int(r30), 'e30': int(e30), 'rate30_val': rate30_val, 'rate30_str': rate30_str, 'bell30': bell30,
-        '_sort_date': p['date']
+        '_sort_date': p.get('date', str(today))
     }
 
 # --- Callback ---
@@ -330,6 +320,83 @@ with st.sidebar:
     filter_format = st.multiselect("形式", ["All"] + POST_FORMATS, key='filter_format')
     filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)", key='filter_topic_keyword')
     
+    st.divider()
+    st.subheader("📥 匯入資料")
+    uploaded_file = st.file_uploader("上傳 CSV 或 JSON", type=['csv', 'json'])
+    if uploaded_file:
+        try:
+            if uploaded_file.name.endswith('.json'):
+                data = json.load(uploaded_file)
+                if isinstance(data, list):
+                    # Ensure minimal keys
+                    valid_data = []
+                    for d in data:
+                        if 'date' in d and 'topic' in d:
+                            if 'id' not in d: d['id'] = str(uuid.uuid4())
+                            valid_data.append(d)
+                    if valid_data:
+                        st.session_state.posts.extend(valid_data)
+                        save_data(st.session_state.posts)
+                        st.success(f"成功匯入 {len(valid_data)} 筆 JSON 資料！")
+                        st.rerun()
+            elif uploaded_file.name.endswith('.csv'):
+                # Try different encodings
+                df = None
+                for enc in ['utf-8', 'utf-8-sig', 'cp950']:
+                    try:
+                        uploaded_file.seek(0)
+                        df = pd.read_csv(uploaded_file, encoding=enc)
+                        break
+                    except: continue
+                
+                if df is not None:
+                    # Rename columns if Chinese headers
+                    df.rename(columns=CSV_IMPORT_MAP, inplace=True)
+                    
+                    # Convert to list of dicts
+                    new_posts = []
+                    for _, row in df.iterrows():
+                        if pd.isna(row.get('date')) or pd.isna(row.get('topic')): continue
+                        
+                        # Reconstruct metrics structure
+                        m7 = {
+                            'reach': safe_num(row.get('metrics7d_reach', 0)),
+                            'likes': safe_num(row.get('metrics7d_eng', 0)), # Approximation
+                            'comments': 0, 'shares': 0
+                        }
+                        m1 = {
+                            'reach': safe_num(row.get('metrics1m_reach', 0)),
+                            'likes': safe_num(row.get('metrics1m_eng', 0)),
+                            'comments': 0, 'shares': 0
+                        }
+                        
+                        post = {
+                            'id': str(uuid.uuid4()),
+                            'date': str(row.get('date', '')),
+                            'platform': str(row.get('platform', 'Facebook')),
+                            'topic': str(row.get('topic', '')),
+                            'postType': str(row.get('postType', '')),
+                            'postSubType': str(row.get('postSubType', '')),
+                            'postPurpose': str(row.get('postPurpose', '')),
+                            'postFormat': str(row.get('postFormat', '')),
+                            'projectOwner': str(row.get('projectOwner', '')),
+                            'postOwner': str(row.get('postOwner', '')),
+                            'designer': str(row.get('designer', '')),
+                            'metrics7d': m7,
+                            'metrics1m': m1
+                        }
+                        new_posts.append(post)
+                    
+                    if new_posts:
+                        st.session_state.posts.extend(new_posts)
+                        save_data(st.session_state.posts)
+                        st.success(f"成功匯入 {len(new_posts)} 筆 CSV 資料！")
+                        st.rerun()
+                else:
+                    st.error("無法讀取檔案，請檢查編碼 (建議 UTF-8 或 Big5)")
+        except Exception as e:
+            st.error(f"匯入失敗: {e}")
+
     st.divider()
     date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True, key='date_filter_type')
     if date_filter_type == "月":
@@ -474,16 +541,12 @@ with tab1:
                     if key.startswith("entry_"): del st.session_state[key]
                 st.rerun()
 
-    # --- View Mode ---
-    view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed", key="view_mode_radio")
-    st.write("")
-
     # --- Filter Logic ---
     filtered_posts = st.session_state.posts
     if date_filter_type == "月":
-        filtered_posts = [p for p in filtered_posts if p['date'].startswith(selected_month)]
+        filtered_posts = [p for p in filtered_posts if p.get('date','').startswith(selected_month)]
     else:
-        filtered_posts = [p for p in filtered_posts if start_date <= datetime.strptime(p['date'], "%Y-%m-%d").date() <= end_date]
+        filtered_posts = [p for p in filtered_posts if start_date <= datetime.strptime(p.get('date', str(datetime.now().date())), "%Y-%m-%d").date() <= end_date]
     
     if filter_platform: filtered_posts = [p for p in filtered_posts if p['platform'] in filter_platform]
     if filter_owner: filtered_posts = [p for p in filtered_posts if p['postOwner'] in filter_owner]
@@ -491,6 +554,10 @@ with tab1:
     if filter_post_type: filtered_posts = [p for p in filtered_posts if p['postType'] in filter_post_type]
     if filter_purpose: filtered_posts = [p for p in filtered_posts if p['postPurpose'] in filter_purpose]
     if filter_format: filtered_posts = [p for p in filtered_posts if p['postFormat'] in filter_format]
+
+    # --- View Mode ---
+    view_mode = st.radio("檢視模式", ["📋 列表模式", "🗓️ 日曆模式"], horizontal=True, label_visibility="collapsed", key="view_mode_radio")
+    st.write("")
 
     # --- Calendar View ---
     if view_mode == "🗓️ 日曆模式":
@@ -519,7 +586,6 @@ with tab1:
                             st.markdown(f"<div class='cal-day-cell' style='{bg}'><div class='cal-day-num'>{day}</div></div>", unsafe_allow_html=True)
                             day_p = [p for p in filtered_posts if p['date'] == date_s]
                             for p in day_p:
-                                # Bell Logic for Calendar
                                 show_bell = False
                                 if not is_metrics_disabled(p['platform'], p['postFormat']):
                                     p_d = datetime.strptime(p['date'], "%Y-%m-%d").date()
@@ -555,7 +621,6 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - FIXED [0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -585,14 +650,12 @@ with tab1:
                     c[5].write(p['postFormat'])
                     c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
-                    # 7D Rate
                     if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[7].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
                          c[7].markdown(p['rate7_str'], unsafe_allow_html=True) 
                     else: c[7].markdown(p['rate7_str'], unsafe_allow_html=True)
 
-                    # 30D Rate
                     if p['bell30'] and p['platform'] != 'Threads': c[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[8].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
@@ -639,7 +702,6 @@ with tab1:
 with tab2:
     with st.expander("⚙️ KPI 標準設定"):
         std = st.session_state.standards
-        # 4 cols layout
         c1, c2, c3, c4 = st.columns(4)
         with c1:
             st.subheader("Facebook")
@@ -711,28 +773,13 @@ with tab2:
     c1, c2, c3 = st.columns(3)
     p_sel = c1.selectbox("1. 分析基準", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天" if x == "metrics7d" else "🌳 30天")
     # Tab 2 inherits filters from filtered_posts directly
-    # Re-apply ad/format logic on top of filtered_posts
-    # Make sure filtered_posts exists
-    if 'posts' not in st.session_state: st.session_state.posts = load_data()
-    # Re-run filter logic to get base filtered list
-    # (Since tab logic runs top-down, filtered_posts from sidebar block is available)
-    # We copy it to avoid mutating original list
-    target = [p for p in filtered_posts]
-    
-    # Local filters for Analysis
-    # Note: Removed "Content Type" and "Format" filters from UI as requested? 
-    # Wait, previous instruction was "use sidebar filters".
-    # But user prompt 4 says "Filter logic fix: IG/Threads hidden".
-    # I will rely solely on SIDEBAR filters for basic filtering.
-    # But Analysis page usually needs "Ad vs Non-Ad" split?
-    # User said "Analysis settings only keep Time Basis".
-    # So I removed Ad/Format selectors here. Everything is controlled by sidebar.
     
     # Use sidebar filtered result directly
+    target = filtered_posts # Copy ref
     cnt = len(target)
     
-    # st.markdown("---")
-    # st.metric("篩選總篇數", cnt) # Moved to table footer
+    st.markdown("---")
+    st.metric("篩選總篇數", cnt) # Moved to table footer
     
     st.markdown("### 🏆 各平台成效")
     if target:
@@ -758,8 +805,6 @@ with tab2:
         
         # LINE@ Row (if exists in filter)
         line_sub = [p for p in target if p['platform'] == 'LINE@']
-        # Remove LINE@ from table as requested "Don't show LINE@ stats"
-        # Wait, requirement 3 says "LINE@ move to end, show -". Okay.
         if line_sub:
              p_stats.append({"平台": "LINE@", "總觸及": "-", "總互動": "-", "互動率": "-", "篇數": len(line_sub)})
 
@@ -773,7 +818,6 @@ with tab2:
         })
         
         df_stats = pd.DataFrame(p_stats)
-        df_stats = df_stats[["平台", "總觸及", "總互動", "互動率", "篇數"]]
         st.dataframe(df_stats, use_container_width=True, hide_index=True)
 
     st.markdown("### 🍰 類型分佈")
