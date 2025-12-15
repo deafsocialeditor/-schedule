@@ -21,7 +21,7 @@ st.set_page_config(
 DATA_FILE = "social_posts.json"
 STANDARDS_FILE = "social_standards.json"
 
-# 選項定義 (注意：已移除空白選項，確保預選第一個)
+# 選項定義
 PLATFORMS = ['Facebook', 'Instagram', 'LINE@', 'YouTube', 'Threads', '社團']
 MAIN_POST_TYPES = ['喜餅', '彌月', '伴手禮', '社群互動', '圓夢計畫', '公告']
 SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
@@ -100,18 +100,17 @@ def is_metrics_disabled(platform, fmt):
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
-    """安全轉換數值，防止 NaN 導致崩潰"""
+    """安全轉換數值，防止 NaN 或 逗號 導致崩潰"""
     try:
+        if isinstance(val, str):
+            val = val.replace(',', '').strip()
         f = float(val)
         if math.isnan(f) or math.isinf(f): return 0.0
         return f
     except: return 0.0
 
 def get_performance_label(platform, metrics, fmt, standards):
-    """
-    回傳: (標籤文字, 顏色class, Tooltip提示文字)
-    邏輯：只要一項達標 (觸及 OR 互動 OR 互動率) 即算達標
-    """
+    """回傳: (標籤文字, 顏色class, Tooltip提示文字)"""
     if is_metrics_disabled(platform, fmt): 
         return "🚫 不計", "gray", "此形式/平台不需計算成效"
     
@@ -129,7 +128,6 @@ def get_performance_label(platform, metrics, fmt, standards):
     color = "gray"
     tooltip = ""
 
-    # Helper function for OR logic
     def check_pass(target_r, target_e):
         target_rate = (target_e / target_r * 100) if target_r > 0 else 0
         return (reach >= target_r) or (eng >= target_e) or (rate >= target_rate)
@@ -242,7 +240,6 @@ def edit_post_callback(post):
     st.session_state['entry_topic'] = post['topic']
     st.session_state['entry_type'] = post['postType'] if post['postType'] in MAIN_POST_TYPES else MAIN_POST_TYPES[0]
     
-    # 子類型特殊處理
     sub = post.get('postSubType', '')
     if sub in SOUVENIR_SUB_TYPES: st.session_state['entry_subtype'] = sub
     else: st.session_state['entry_subtype'] = "-- 無 --"
@@ -274,6 +271,14 @@ def go_to_post_from_calendar(post_id):
     st.session_state.target_scroll_id = post_id
     st.session_state.scroll_to_list_item = True 
 
+def reset_filters():
+    st.session_state.filter_platform = []
+    st.session_state.filter_owner = []
+    st.session_state.filter_post_type = []
+    st.session_state.filter_purpose = []
+    st.session_state.filter_format = []
+    st.session_state.filter_topic_keyword = ""
+
 # --- Init State ---
 if 'posts' not in st.session_state: st.session_state.posts = load_data()
 if 'standards' not in st.session_state: st.session_state.standards = load_standards()
@@ -282,6 +287,7 @@ if 'scroll_to_top' not in st.session_state: st.session_state.scroll_to_top = Fal
 if 'target_scroll_id' not in st.session_state: st.session_state.target_scroll_id = None
 if 'scroll_to_list_item' not in st.session_state: st.session_state.scroll_to_list_item = False
 if 'view_mode_radio' not in st.session_state: st.session_state.view_mode_radio = "🗓️ 日曆模式"
+if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0 # 上傳元件的 key
 
 # --- CSS ---
 cal_btn_css = ""
@@ -327,6 +333,10 @@ st.markdown(f"""
 # --- 5. Sidebar ---
 with st.sidebar:
     st.title("🔎 篩選條件")
+    if st.button("🧹 重置所有篩選", use_container_width=True):
+        reset_filters()
+        st.rerun()
+        
     filter_platform = st.multiselect("平台", ["All"] + PLATFORMS, key='filter_platform')
     filter_owner = st.multiselect("負責人", ["All"] + POST_OWNERS, key='filter_owner')
     filter_post_type = st.multiselect("貼文類型", ["All"] + MAIN_POST_TYPES, key='filter_post_type')
@@ -336,23 +346,20 @@ with st.sidebar:
     
     st.divider()
     st.subheader("📥 匯入資料")
-    uploaded_file = st.file_uploader("上傳 CSV 或 JSON", type=['csv', 'json'])
+    uploaded_file = st.file_uploader("上傳 CSV 或 JSON", type=['csv', 'json'], key=f"uploader_{st.session_state.uploader_key}")
+    
     if uploaded_file:
         try:
+            new_posts = []
+            min_date, max_date = None, None
+            
             if uploaded_file.name.endswith('.json'):
                 data = json.load(uploaded_file)
                 if isinstance(data, list):
-                    # Ensure minimal keys
-                    valid_data = []
                     for d in data:
                         if 'date' in d and 'topic' in d:
                             if 'id' not in d: d['id'] = str(uuid.uuid4())
-                            valid_data.append(d)
-                    if valid_data:
-                        st.session_state.posts.extend(valid_data)
-                        save_data(st.session_state.posts)
-                        st.success(f"成功匯入 {len(valid_data)} 筆 JSON 資料！")
-                        st.rerun()
+                            new_posts.append(d)
             elif uploaded_file.name.endswith('.csv'):
                 # Try different encodings
                 df = None
@@ -364,18 +371,14 @@ with st.sidebar:
                     except: continue
                 
                 if df is not None:
+                    df.columns = df.columns.str.strip()
                     df.rename(columns=CSV_IMPORT_MAP, inplace=True)
                     df = df.fillna(0)
                     
-                    # 強制日期格式轉換
                     if 'date' in df.columns:
                         df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
                     
-                    # 效能優化：使用 to_dict('records') 取代 iterrows
-                    new_posts = []
                     records = df.to_dict('records')
-                    min_date, max_date = None, None
-                    
                     for row in records:
                         r_date = str(row.get('date', ''))
                         r_topic = str(row.get('topic', ''))
@@ -413,18 +416,25 @@ with st.sidebar:
                             'metrics1m': m1
                         }
                         new_posts.append(post)
-                    
-                    if new_posts:
-                        st.session_state.posts.extend(new_posts)
-                        save_data(st.session_state.posts)
-                        st.success(f"成功匯入 {len(new_posts)} 筆資料！\n資料範圍：{min_date} 至 {max_date}")
-                        st.rerun()
-                    else:
-                        st.warning("沒有讀取到有效資料，請檢查 CSV 日期格式。")
                 else:
-                    st.error("無法讀取檔案，請檢查編碼 (建議 UTF-8)")
+                    st.error("無法讀取 CSV，請確認編碼。")
+
+            if new_posts:
+                st.info(f"預覽：讀取到 {len(new_posts)} 筆資料")
+                if min_date and max_date:
+                    st.caption(f"資料日期範圍：{min_date} 至 {max_date}")
+                
+                if st.button("確認匯入", type="primary"):
+                    st.session_state.posts.extend(new_posts)
+                    save_data(st.session_state.posts)
+                    st.session_state.uploader_key += 1 # Reset uploader
+                    st.success(f"成功匯入 {len(new_posts)} 筆資料！")
+                    st.rerun()
+            else:
+                st.warning("檔案中沒有有效資料，請檢查欄位名稱或日期格式。")
+                
         except Exception as e:
-            st.error(f"匯入失敗: {e}")
+            st.error(f"匯入錯誤: {e}")
 
     st.divider()
     date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True, key='date_filter_type')
@@ -471,7 +481,7 @@ with tab1:
         is_edit = st.session_state.editing_post is not None
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
         
-        # Init form defaults (Default to First Option, no more "")
+        # Init form defaults
         for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
             if k not in st.session_state:
                 if k == 'entry_date': st.session_state[k] = datetime.now()
@@ -669,8 +679,8 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - FIXED
-            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+            # 12 Cols
+            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
             st.markdown("<hr style='margin:0.5em 0; border-top:1px dashed #ddd;'>", unsafe_allow_html=True)
@@ -687,7 +697,7 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
                     pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
