@@ -21,7 +21,7 @@ st.set_page_config(
 DATA_FILE = "social_posts.json"
 STANDARDS_FILE = "social_standards.json"
 
-# 選項定義
+# 選項定義 (注意：已移除空白選項，確保預選第一個)
 PLATFORMS = ['Facebook', 'Instagram', 'LINE@', 'YouTube', 'Threads', '社團']
 MAIN_POST_TYPES = ['喜餅', '彌月', '伴手禮', '社群互動', '圓夢計畫', '公告']
 SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
@@ -108,7 +108,10 @@ def safe_num(val):
     except: return 0.0
 
 def get_performance_label(platform, metrics, fmt, standards):
-    """回傳: (標籤文字, 顏色class, Tooltip提示文字)"""
+    """
+    回傳: (標籤文字, 顏色class, Tooltip提示文字)
+    邏輯：只要一項達標 (觸及 OR 互動 OR 互動率) 即算達標
+    """
     if is_metrics_disabled(platform, fmt): 
         return "🚫 不計", "gray", "此形式/平台不需計算成效"
     
@@ -126,6 +129,7 @@ def get_performance_label(platform, metrics, fmt, standards):
     color = "gray"
     tooltip = ""
 
+    # Helper function for OR logic
     def check_pass(target_r, target_e):
         target_rate = (target_e / target_r * 100) if target_r > 0 else 0
         return (reach >= target_r) or (eng >= target_e) or (rate >= target_rate)
@@ -230,19 +234,24 @@ def edit_post_callback(post):
     if st.session_state.view_mode_radio == "🗓️ 日曆模式":
          st.session_state.view_mode_radio = "📋 列表模式"
     
+    # 設置編輯時的預設值 (若無值則使用列表第一個選項)
     try: st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
     except: st.session_state['entry_date'] = datetime.now().date()
         
-    st.session_state['entry_platform_single'] = post['platform']
+    st.session_state['entry_platform_single'] = post['platform'] if post['platform'] in PLATFORMS else PLATFORMS[0]
     st.session_state['entry_topic'] = post['topic']
-    st.session_state['entry_type'] = post['postType']
+    st.session_state['entry_type'] = post['postType'] if post['postType'] in MAIN_POST_TYPES else MAIN_POST_TYPES[0]
+    
+    # 子類型特殊處理
     sub = post.get('postSubType', '')
-    st.session_state['entry_subtype'] = sub if sub in (["-- 無 --"] + SOUVENIR_SUB_TYPES) else "-- 無 --"
-    st.session_state['entry_purpose'] = post['postPurpose']
-    st.session_state['entry_format'] = post['postFormat']
-    st.session_state['entry_po'] = post['projectOwner']
-    st.session_state['entry_owner'] = post['postOwner']
-    st.session_state['entry_designer'] = post['designer']
+    if sub in SOUVENIR_SUB_TYPES: st.session_state['entry_subtype'] = sub
+    else: st.session_state['entry_subtype'] = "-- 無 --"
+        
+    st.session_state['entry_purpose'] = post['postPurpose'] if post['postPurpose'] in POST_PURPOSES else POST_PURPOSES[0]
+    st.session_state['entry_format'] = post['postFormat'] if post['postFormat'] in POST_FORMATS else POST_FORMATS[0]
+    st.session_state['entry_po'] = post['projectOwner'] if post['projectOwner'] in PROJECT_OWNERS else PROJECT_OWNERS[0]
+    st.session_state['entry_owner'] = post['postOwner'] if post['postOwner'] in POST_OWNERS else POST_OWNERS[0]
+    st.session_state['entry_designer'] = post['designer'] if post['designer'] in DESIGNERS else DESIGNERS[0]
     
     m7 = post.get('metrics7d', {})
     st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0))
@@ -362,10 +371,12 @@ with st.sidebar:
                     if 'date' in df.columns:
                         df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
                     
+                    # 效能優化：使用 to_dict('records') 取代 iterrows
                     new_posts = []
+                    records = df.to_dict('records')
                     min_date, max_date = None, None
                     
-                    for _, row in df.iterrows():
+                    for row in records:
                         r_date = str(row.get('date', ''))
                         r_topic = str(row.get('topic', ''))
                         
@@ -460,7 +471,7 @@ with tab1:
         is_edit = st.session_state.editing_post is not None
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
         
-        # Init form
+        # Init form defaults (Default to First Option, no more "")
         for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
             if k not in st.session_state:
                 if k == 'entry_date': st.session_state[k] = datetime.now()
@@ -468,7 +479,13 @@ with tab1:
                 elif 'platform_multi' in k: st.session_state[k] = ['Facebook']
                 elif 'type' in k: st.session_state[k] = MAIN_POST_TYPES[0]
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
-                else: st.session_state[k] = "" if 'owner' in k or 'po' in k or 'designer' in k or 'format' in k or 'topic' in k or 'subtype' in k else "-- 無 --"
+                elif 'format' in k: st.session_state[k] = POST_FORMATS[0]
+                elif 'po' in k: st.session_state[k] = PROJECT_OWNERS[0]
+                elif 'owner' in k: st.session_state[k] = POST_OWNERS[0]
+                elif 'designer' in k: st.session_state[k] = DESIGNERS[0]
+                elif 'subtype' in k: st.session_state[k] = "-- 無 --"
+                else: st.session_state[k] = ""
+        
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares', 'entry_m1_reach', 'entry_m1_likes', 'entry_m1_comments', 'entry_m1_shares']:
              if k not in st.session_state: st.session_state[k] = 0.0
 
@@ -497,12 +514,12 @@ with tab1:
             else:
                 single_purpose = st.selectbox("目的", POST_PURPOSES, key="entry_purpose")
                 for p in selected_platforms: platform_purposes[p] = single_purpose
-        f_format = c8.selectbox("形式", [""] + POST_FORMATS, key="entry_format")
+        f_format = c8.selectbox("形式", POST_FORMATS, key="entry_format")
 
         c9, c10, c11 = st.columns(3)
-        f_po = c9.selectbox("專案負責人", [""] + PROJECT_OWNERS, key="entry_po")
-        f_owner = c10.selectbox("貼文負責人", [""] + POST_OWNERS, key="entry_owner")
-        f_designer = c11.selectbox("美編", [""] + DESIGNERS, key="entry_designer")
+        f_po = c9.selectbox("專案負責人", PROJECT_OWNERS, key="entry_po")
+        f_owner = c10.selectbox("貼文負責人", POST_OWNERS, key="entry_owner")
+        f_designer = c11.selectbox("美編", DESIGNERS, key="entry_designer")
 
         st.divider()
         current_platform = selected_platforms[0] if selected_platforms else 'Facebook'
@@ -652,7 +669,7 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols - FIXED [0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
+            # 12 Cols - FIXED
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -670,7 +687,6 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                    # 12 Cols
                     c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
