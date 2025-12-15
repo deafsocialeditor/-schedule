@@ -108,10 +108,7 @@ def safe_num(val):
     except: return 0.0
 
 def get_performance_label(platform, metrics, fmt, standards):
-    """
-    回傳: (標籤文字, 顏色class, Tooltip提示文字)
-    邏輯：只要一項達標 (觸及 OR 互動 OR 互動率) 即算達標
-    """
+    """回傳: (標籤文字, 顏色class, Tooltip提示文字)"""
     if is_metrics_disabled(platform, fmt): 
         return "🚫 不計", "gray", "此形式/平台不需計算成效"
     
@@ -129,7 +126,6 @@ def get_performance_label(platform, metrics, fmt, standards):
     color = "gray"
     tooltip = ""
 
-    # Helper function for OR logic
     def check_pass(target_r, target_e):
         target_rate = (target_e / target_r * 100) if target_r > 0 else 0
         return (reach >= target_r) or (eng >= target_e) or (rate >= target_rate)
@@ -359,16 +355,11 @@ with st.sidebar:
                     except: continue
                 
                 if df is not None:
-                    # 1. 清理欄位名稱 (去除前後空白)
-                    df.columns = df.columns.str.strip()
-                    # 2. 欄位對照
                     df.rename(columns=CSV_IMPORT_MAP, inplace=True)
-                    # 3. 處理 NaN
                     df = df.fillna(0)
                     
-                    # 4. 強制日期格式轉換
+                    # 強制日期格式轉換
                     if 'date' in df.columns:
-                        # 將各種格式的日期轉為 YYYY-MM-DD
                         df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
                     
                     new_posts = []
@@ -378,11 +369,9 @@ with st.sidebar:
                         r_date = str(row.get('date', ''))
                         r_topic = str(row.get('topic', ''))
                         
-                        # 忽略日期無效的資料 (NaT 轉字串會變成 'NaT' 或 'nan')
                         if r_date in ['NaT', 'nan', '0', '']: continue
                         if r_topic == '0' or r_topic == '': continue
                         
-                        # 計算日期範圍以供提示
                         if not min_date or r_date < min_date: min_date = r_date
                         if not max_date or r_date > max_date: max_date = r_date
                         
@@ -417,12 +406,12 @@ with st.sidebar:
                     if new_posts:
                         st.session_state.posts.extend(new_posts)
                         save_data(st.session_state.posts)
-                        st.success(f"成功匯入 {len(new_posts)} 筆資料！\n資料日期範圍：{min_date} 至 {max_date}")
+                        st.success(f"成功匯入 {len(new_posts)} 筆資料！\n資料範圍：{min_date} 至 {max_date}")
                         st.rerun()
                     else:
-                        st.warning("沒有讀取到有效資料，請檢查 CSV 的日期格式是否正確。")
+                        st.warning("沒有讀取到有效資料，請檢查 CSV 日期格式。")
                 else:
-                    st.error("無法讀取檔案，請檢查編碼 (建議 UTF-8 或 Big5)")
+                    st.error("無法讀取檔案，請檢查編碼 (建議 UTF-8)")
         except Exception as e:
             st.error(f"匯入失敗: {e}")
 
@@ -430,7 +419,7 @@ with st.sidebar:
     date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True, key='date_filter_type')
     if date_filter_type == "月":
         dates = [p['date'] for p in st.session_state.posts] if st.session_state.posts else [datetime.now().strftime("%Y-%m-%d")]
-        months = sorted(list(set([d[:7] for d in dates])), reverse=True)
+        months = sorted(list(set([d[:7] for d in dates if len(d) >= 7])), reverse=True)
         if not months: months = [datetime.now().strftime("%Y-%m")]
         selected_month = st.selectbox("選擇月份", months, key='selected_month')
     else:
@@ -591,8 +580,12 @@ with tab1:
     # --- Calendar View ---
     if view_mode == "🗓️ 日曆模式":
         if date_filter_type == "月":
-            year_str, month_str = selected_month.split("-")
-            cal_year, cal_month = int(year_str), int(month_str)
+            try:
+                year_str, month_str = selected_month.split("-")
+                cal_year, cal_month = int(year_str), int(month_str)
+            except:
+                now = datetime.now()
+                cal_year, cal_month = now.year, now.month
         else:
             cal_year, cal_month = start_date.year, start_date.month
 
@@ -650,7 +643,7 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols
+            # 12 Cols - FIXED
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
@@ -668,6 +661,7 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
+                    # 12 Cols
                     c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
