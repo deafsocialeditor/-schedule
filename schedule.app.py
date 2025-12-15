@@ -232,7 +232,7 @@ def edit_post_callback(post):
     if st.session_state.view_mode_radio == "🗓️ 日曆模式":
          st.session_state.view_mode_radio = "📋 列表模式"
     
-    # 設置編輯時的預設值 (若無值則使用列表第一個選項)
+    # 設置編輯時的預設值
     try: st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
     except: st.session_state['entry_date'] = datetime.now().date()
         
@@ -287,7 +287,7 @@ if 'scroll_to_top' not in st.session_state: st.session_state.scroll_to_top = Fal
 if 'target_scroll_id' not in st.session_state: st.session_state.target_scroll_id = None
 if 'scroll_to_list_item' not in st.session_state: st.session_state.scroll_to_list_item = False
 if 'view_mode_radio' not in st.session_state: st.session_state.view_mode_radio = "🗓️ 日曆模式"
-if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0 # 上傳元件的 key
+if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
 
 # --- CSS ---
 cal_btn_css = ""
@@ -481,7 +481,7 @@ with tab1:
         is_edit = st.session_state.editing_post is not None
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
         
-        # Init form defaults
+        # Init form defaults (Default to First Option, no more "")
         for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
             if k not in st.session_state:
                 if k == 'entry_date': st.session_state[k] = datetime.now()
@@ -679,8 +679,8 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # 12 Cols
-            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+            # 12 Cols - FIXED [0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
+            cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
             headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
             st.markdown("<hr style='margin:0.5em 0; border-top:1px dashed #ddd;'>", unsafe_allow_html=True)
@@ -697,7 +697,8 @@ with tab1:
 
                 with st.container():
                     st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4])
+                    # 12 Cols - FIXED
+                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
                     c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
                     pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
@@ -738,6 +739,7 @@ with tab1:
                         dc[3].metric(f"{w30}30天-互動", f"{p['e30']:,}")
                     st.markdown('</div>', unsafe_allow_html=True)
             
+            # Export CSV
             display_data = processed_data
             export_df = pd.DataFrame(display_data)
             export_cols = {
@@ -841,7 +843,7 @@ with tab2:
     if target:
         p_stats = []
         for pf in PLATFORMS:
-            if pf == 'LINE@': continue
+            if pf == 'LINE@': continue # Skip LINE@ for now
             
             sub = [p for p in target if p['platform'] == pf]
             if not sub: continue
@@ -850,6 +852,7 @@ with tab2:
             for p in sub:
                 if is_metrics_disabled(p['platform'], p['postFormat']): continue
                 m = p.get(p_sel, {})
+                # Threads/YT included
                 r += safe_num(m.get('reach', 0))
                 e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
             
@@ -858,7 +861,7 @@ with tab2:
             
             p_stats.append({"平台": pf, "總觸及": int(r), "總互動": int(e), "互動率": rt_s, "篇數": len(sub)})
         
-        # LINE@ Row (at end)
+        # LINE@ Row (if exists in filter)
         line_sub = [p for p in target if p['platform'] == 'LINE@']
         if line_sub:
              p_stats.append({"平台": "LINE@", "總觸及": "-", "總互動": "-", "互動率": "-", "篇數": len(line_sub)})
