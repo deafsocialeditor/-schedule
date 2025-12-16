@@ -33,7 +33,10 @@ PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門
 POST_OWNERS = ['一千', '楷曜', '可榆']
 DESIGNERS = ['千惟', '靖嬙']
 
-# CSV 欄位對照
+# 定義廣告類型的目的
+AD_PURPOSE_LIST = ['廣告', '門市廣告']
+
+# CSV 欄位對照 (匯入用：中文 -> 英文 key)
 CSV_IMPORT_MAP = {
     '日期': 'date', '平台': 'platform', '主題': 'topic', '類型': 'postType',
     '子類型': 'postSubType', '目的': 'postPurpose', '形式': 'postFormat',
@@ -42,20 +45,30 @@ CSV_IMPORT_MAP = {
     '30天瀏覽/觸及': 'metrics1m_reach', '30天互動': 'metrics1m_eng'
 }
 
-# Icon & Color Mapping
+# Icon Mapping (列表標籤用)
 ICONS = {
-    'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵', '社團': '👥'
+    'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵',
+    '社團': '👥',
+    'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
 }
+
+# 平台顏色對照 (全域定義)
 PLATFORM_COLORS = {
-    'Facebook': '#1877F2', 'Instagram': '#E1306C', 'LINE@': '#06C755',
-    'YouTube': '#FF0000', 'Threads': '#101010', '社團': '#F97316'
+    'Facebook': '#1877F2',   # FB Blue
+    'Instagram': '#E1306C',  # IG Pink
+    'LINE@': '#06C755',      # LINE Green
+    'YouTube': '#FF0000',    # YT Red
+    'Threads': '#101010',    # Threads Black
+    '社團': '#F97316'        # Community Orange
 }
+
+# 平台隱藏標記 (用於 CSS 選擇器)
 PLATFORM_MARKS = {
     'Facebook': '🟦', 'Instagram': '🟪', 'LINE@': '🟩', 
     'YouTube': '🟥', 'Threads': '⬛', '社團': '🟧'
 }
 
-# --- 2. 資料處理函式 (保持不變) ---
+# --- 2. 資料處理函式 ---
 
 def load_data():
     if not os.path.exists(DATA_FILE): return []
@@ -87,21 +100,33 @@ def is_metrics_disabled(platform, fmt):
     return platform == 'LINE@' or fmt in ['限動', '留言處']
 
 def safe_num(val):
+    """安全轉換數值，防止 NaN 或 逗號 導致崩潰"""
     try:
-        if isinstance(val, str): val = val.replace(',', '').strip()
+        if isinstance(val, str):
+            val = val.replace(',', '').strip()
         f = float(val)
         if math.isnan(f) or math.isinf(f): return 0.0
         return f
     except: return 0.0
 
 def get_performance_label(platform, metrics, fmt, standards):
-    if is_metrics_disabled(platform, fmt): return "🚫 不計", "gray", "此形式/平台不需計算成效"
+    """回傳: (標籤文字, 顏色class, Tooltip提示文字)"""
+    if is_metrics_disabled(platform, fmt): 
+        return "🚫 不計", "gray", "此形式/平台不需計算成效"
+    
     reach = safe_num(metrics.get('reach', 0))
-    if reach == 0: return "-", "gray", "尚未填寫數據"
+    if reach == 0: 
+        return "-", "gray", "尚未填寫數據"
+    
     eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
     rate = (eng / reach) * 100
+    
     std = standards.get(platform, {})
     if not std: return "-", "gray", "未設定標準"
+    
+    label = "-"
+    color = "gray"
+    tooltip = ""
 
     def check_pass(target_r, target_e):
         target_rate = (target_e / target_r * 100) if target_r > 0 else 0
@@ -111,61 +136,88 @@ def get_performance_label(platform, metrics, fmt, standards):
         h = std.get('high', {'reach': 2000, 'engagement': 100})
         s = std.get('std', {'reach': 1500, 'engagement': 45})
         l = std.get('low', {'reach': 1000, 'engagement': 15})
+        
         h_rt = (h.get('engagement', 0)/h.get('reach', 1)*100) if h.get('reach', 0)>0 else 0
         s_rt = (s.get('engagement', 0)/s.get('reach', 1)*100) if s.get('reach', 0)>0 else 0
         l_rt = (l.get('engagement', 0)/l.get('reach', 1)*100) if l.get('reach', 0)>0 else 0
-        tooltip = f"高標: R{int(h.get('reach'))}/E{int(h.get('engagement'))} ({h_rt:.1f}%)\n標準: R{int(s.get('reach'))}/E{int(s.get('engagement'))} ({s_rt:.1f}%)\n低標: R{int(l.get('reach'))}/E{int(l.get('engagement'))} ({l_rt:.1f}%)"
-        if check_pass(h.get('reach', 2000), h.get('engagement', 100)): return "🏆 高標", "purple", tooltip
-        elif check_pass(s.get('reach', 1500), s.get('engagement', 45)): return "✅ 標準", "green", tooltip
-        elif check_pass(l.get('reach', 1000), l.get('engagement', 15)): return "🤏 低標", "orange", tooltip
-        else: return "🔴 未達", "red", tooltip
+        
+        tooltip = f"高標: 觸及{int(h.get('reach',0))} / 互動{int(h.get('engagement',0))} (率{h_rt:.1f}%)\n標準: 觸及{int(s.get('reach',0))} / 互動{int(s.get('engagement',0))} (率{s_rt:.1f}%)\n低標: 觸及{int(l.get('reach',0))} / 互動{int(l.get('engagement',0))} (率{l_rt:.1f}%)"
+        
+        if check_pass(h.get('reach', 2000), h.get('engagement', 100)):
+            return "🏆 高標雙指標" if (reach >= h.get('reach') and eng >= h.get('engagement')) else ("🏆 高標觸及" if reach >= h.get('reach') else "🏆 高標互動"), "purple", tooltip
+        elif check_pass(s.get('reach', 1500), s.get('engagement', 45)):
+            return "✅ 標準雙指標" if (reach >= s.get('reach') and eng >= s.get('engagement')) else ("✅ 標準觸及" if reach >= s.get('reach') else "✅ 標準互動"), "green", tooltip
+        elif check_pass(l.get('reach', 1000), l.get('engagement', 15)):
+            return "🤏 低標雙指標" if (reach >= l.get('reach') and eng >= l.get('engagement')) else ("🤏 低標觸及" if reach >= l.get('reach') else "🤏 低標互動"), "orange", tooltip
+        else: return "🔴 未達標", "red", tooltip
+        
     elif platform in ['Instagram', 'YouTube', '社團']:
         t_reach = std.get('reach', 0)
         t_eng = std.get('engagement', 0)
-        tooltip = f"目標: R{int(t_reach)} / E{int(t_eng)}"
+        t_rate = (t_eng / t_reach * 100) if t_reach > 0 else 0
+        
+        tooltip = f"目標: 觸及 {int(t_reach)} / 互動 {int(t_eng)} (率{t_rate:.1f}%)"
+        
         if check_pass(t_reach, t_eng): return "✅ 達標", "green", tooltip
-        else: return "🔴 未達", "red", tooltip
+        else: return "🔴 未達標", "red", tooltip
+
     elif platform == 'Threads':
         t_reach = std.get('reach', 500)
         t_eng = std.get('engagement', 50)
+        l_reach = std.get('reach_label', '瀏覽')
+        l_eng = std.get('engagement_label', '互動')
+        
+        tooltip = f"{l_reach}: {int(t_reach)} / {l_eng}: {int(t_eng)}"
+        
         pass_reach = reach >= t_reach
         pass_eng = eng >= t_eng
-        tooltip = f"目標: 瀏覽{int(t_reach)} / 互動{int(t_eng)}"
+        
         if pass_reach and pass_eng: return "✅ 雙指標", "green", tooltip
-        elif pass_reach: return "✅ 瀏覽", "green", tooltip
-        elif pass_eng: return "✅ 互動", "green", tooltip
-        else: return "🔴 未達", "red", tooltip
-    return "-", "gray", ""
+        elif pass_reach: return f"✅ {l_reach}", "green", tooltip
+        elif pass_eng: return f"✅ {l_eng}", "green", tooltip
+        else: return "🔴 未達標", "red", tooltip
+
+    return label, color, tooltip
 
 def process_post_metrics(p):
+    """預處理單篇貼文數據"""
     m7 = p.get('metrics7d', {})
     m30 = p.get('metrics1m', {})
+    
     r7 = safe_num(m7.get('reach', 0))
     e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
     r30 = safe_num(m30.get('reach', 0))
     e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
+    
     rate7_val = (e7 / r7 * 100) if r7 > 0 else 0
     rate30_val = (e30 / r30 * 100) if r30 > 0 else 0
+    
     disabled = is_metrics_disabled(p.get('platform'), p.get('postFormat'))
     is_threads = p.get('platform') == 'Threads'
+    
     rate7_str = "-"
     rate30_str = "-"
+    
     if disabled or is_threads:
-        rate7_str = "🚫"
-        rate30_str = "🚫"
+        rate7_str = "🚫 不計"
+        rate30_str = "🚫 不計"
     elif r7 > 0:
         rate7_str = f"{rate7_val:.1f}%"
         if r30 > 0: rate30_str = f"{rate30_val:.1f}%"
+
     today = datetime.now().date()
     try: p_date = datetime.strptime(p.get('date', ''), "%Y-%m-%d").date()
     except: p_date = today
+    
     due_date_7 = p_date + timedelta(days=7)
     due_date_30 = p_date + timedelta(days=30)
+    
     bell7 = False
     bell30 = False
     if not disabled: 
         if today >= due_date_7 and r7 == 0: bell7 = True
         if today >= due_date_30 and r30 == 0: bell30 = True
+
     return {
         **p,
         'r7': int(r7), 'e7': int(e7), 'rate7_val': rate7_val, 'rate7_str': rate7_str, 'bell7': bell7,
@@ -179,23 +231,31 @@ def edit_post_callback(post):
     st.session_state.scroll_to_top = True
     if st.session_state.view_mode_radio == "🗓️ 日曆模式":
          st.session_state.view_mode_radio = "📋 列表模式"
+    
+    # 設置編輯時的預設值
     try: st.session_state['entry_date'] = datetime.strptime(post['date'], "%Y-%m-%d").date()
     except: st.session_state['entry_date'] = datetime.now().date()
+        
     st.session_state['entry_platform_single'] = post['platform'] if post['platform'] in PLATFORMS else PLATFORMS[0]
     st.session_state['entry_topic'] = post['topic']
     st.session_state['entry_type'] = post['postType'] if post['postType'] in MAIN_POST_TYPES else MAIN_POST_TYPES[0]
+    
     sub = post.get('postSubType', '')
-    st.session_state['entry_subtype'] = sub if sub in SOUVENIR_SUB_TYPES else "-- 無 --"
+    if sub in SOUVENIR_SUB_TYPES: st.session_state['entry_subtype'] = sub
+    else: st.session_state['entry_subtype'] = "-- 無 --"
+        
     st.session_state['entry_purpose'] = post['postPurpose'] if post['postPurpose'] in POST_PURPOSES else POST_PURPOSES[0]
     st.session_state['entry_format'] = post['postFormat'] if post['postFormat'] in POST_FORMATS else POST_FORMATS[0]
     st.session_state['entry_po'] = post['projectOwner'] if post['projectOwner'] in PROJECT_OWNERS else PROJECT_OWNERS[0]
     st.session_state['entry_owner'] = post['postOwner'] if post['postOwner'] in POST_OWNERS else POST_OWNERS[0]
     st.session_state['entry_designer'] = post['designer'] if post['designer'] in DESIGNERS else DESIGNERS[0]
+    
     m7 = post.get('metrics7d', {})
     st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0))
     st.session_state['entry_m7_likes'] = safe_num(m7.get('likes', 0))
     st.session_state['entry_m7_comments'] = safe_num(m7.get('comments', 0))
     st.session_state['entry_m7_shares'] = safe_num(m7.get('shares', 0))
+    
     m1 = post.get('metrics1m', {})
     st.session_state['entry_m1_reach'] = safe_num(m1.get('reach', 0))
     st.session_state['entry_m1_likes'] = safe_num(m1.get('likes', 0))
@@ -229,7 +289,7 @@ if 'scroll_to_list_item' not in st.session_state: st.session_state.scroll_to_lis
 if 'view_mode_radio' not in st.session_state: st.session_state.view_mode_radio = "🗓️ 日曆模式"
 if 'uploader_key' not in st.session_state: st.session_state.uploader_key = 0
 
-# --- CSS (RWD Enhanced) ---
+# --- CSS ---
 cal_btn_css = ""
 for pf, mark in PLATFORM_MARKS.items():
     color = PLATFORM_COLORS.get(pf, '#888')
@@ -245,73 +305,28 @@ for pf, mark in PLATFORM_MARKS.items():
     div[data-testid="stButton"] button[aria-label^="{mark}"]:hover {{ filter: brightness(0.9); color: white !important; }}
     """
 
-# RWD CSS Injection
 st.markdown(f"""
     <style>
     .stApp {{ background-color: #ffffff; }}
     .block-container {{ padding-top: 3rem; padding-bottom: 2rem; }}
-    
-    /* Common Badges */
     .kpi-badge {{ padding: 2px 6px; border-radius: 8px; font-weight: bold; font-size: 0.8em; display: inline-block; min-width: 50px; text-align: center; cursor: help; }}
     .purple {{ background-color: #f3e8ff; color: #7e22ce; border: 1px solid #d8b4fe; }}
     .green {{ background-color: #dcfce7; color: #15803d; border: 1px solid #86efac; }}
     .orange {{ background-color: #ffedd5; color: #c2410c; border: 1px solid #fdba74; }}
     .red {{ background-color: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }}
     .gray {{ background-color: #f3f4f6; color: #9ca3af; border: 1px solid #e5e7eb; }}
-    .overdue-alert {{ color: #dc2626; font-weight: bold; font-size: 0.9em; }}
-    .platform-badge-box {{ font-weight: 800; padding: 3px 6px; border-radius: 4px; color: white; font-size: 0.8em; display: inline-block; }}
-    
-    /* Desktop View Styles */
-    .post-row {{ background-color: transparent; border-bottom: 1px solid #f3f4f6; padding: 6px 0; margin-bottom: 0; transition: background-color 0.2s; }}
+    .overdue-alert {{ color: #dc2626; font-weight: bold; font-size: 0.9em; display: flex; align-items: center; }}
+    .platform-badge-box {{ font-weight: 800; padding: 4px 8px; border-radius: 4px; color: white; font-size: 0.9em; display: inline-block; width: 100%; text-align: center; margin-bottom: 2px; }}
+    .post-row {{ background-color: transparent; border-bottom: 1px solid #f3f4f6; padding: 8px 0; margin-bottom: 0; transition: background-color 0.2s; }}
     .post-row:hover {{ background-color: #f9fafb; }}
-    .today-highlight {{ background-color: #fffbeb; border-bottom: 2px solid #fcd34d; padding: 6px 0; }}
-    .scroll-highlight {{ animation: highlight-fade 2s ease-out; border-bottom: 2px solid #3b82f6 !important; padding: 6px 0; }}
+    .today-highlight {{ background-color: #fffbeb; border-bottom: 2px solid #fcd34d; padding: 8px 0; position: relative; }}
     @keyframes highlight-fade {{ 0% {{ background-color: #fef08a; }} 100% {{ background-color: transparent; }} }}
-    .row-text-lg {{ font-size: 1em; font-weight: bold; color: #1f2937; }}
-    
-    /* Calendar Styles */
+    .scroll-highlight {{ animation: highlight-fade 2s ease-out; border-bottom: 2px solid #3b82f6 !important; padding: 8px 0; }}
+    .row-text-lg {{ font-size: 1.05em; font-weight: bold; color: #1f2937; }}
     .cal-day-header {{ text-align: center; font-weight: bold; color: #6b7280; border-bottom: 1px solid #e5e7eb; padding-bottom: 2px; margin-bottom: 2px; font-size: 0.9em; }}
     .cal-day-cell {{ min-height: 60px; padding: 2px; border-radius: 4px; font-size: 0.8em; border: 1px solid #f3f4f6; }}
     .cal-day-num {{ font-weight: bold; font-size: 0.9em; color: #374151; margin-bottom: 2px; margin-left: 2px; }}
     {cal_btn_css}
-    
-    /* --- RWD MEDIA QUERIES --- */
-    
-    /* Hide Mobile elements on Desktop */
-    @media (min-width: 900px) {{
-        .mobile-only {{ display: none !important; }}
-    }}
-    
-    /* Hide Desktop elements on Mobile */
-    @media (max-width: 899px) {{
-        .desktop-only {{ display: none !important; }}
-        /* Adjust layout spacing for mobile */
-        .block-container {{ padding-left: 1rem; padding-right: 1rem; }}
-        div[data-testid="stHorizontalBlock"] {{ gap: 0.5rem; }}
-    }}
-
-    /* Mobile Card Styles */
-    .mobile-card {{
-        border: 1px solid #e5e7eb;
-        border-radius: 8px;
-        padding: 12px;
-        margin-bottom: 12px;
-        background-color: white;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-    }}
-    .mobile-card-header {{
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
-        padding-bottom: 8px;
-        border-bottom: 1px solid #f3f4f6;
-    }}
-    .mobile-topic {{ font-weight: bold; font-size: 1.1em; color: #111827; margin-bottom: 4px; display: block; }}
-    .mobile-meta {{ font-size: 0.9em; color: #6b7280; display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }}
-    .mobile-meta-item {{ background: #f3f4f6; padding: 2px 6px; border-radius: 4px; }}
-    .mobile-stats-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #f8fafc; padding: 8px; border-radius: 6px; font-size: 0.9em; margin-bottom: 8px; }}
-    
     </style>
 """, unsafe_allow_html=True)
 
@@ -332,9 +347,12 @@ with st.sidebar:
     st.divider()
     st.subheader("📥 匯入資料")
     uploaded_file = st.file_uploader("上傳 CSV 或 JSON", type=['csv', 'json'], key=f"uploader_{st.session_state.uploader_key}")
+    
     if uploaded_file:
         try:
             new_posts = []
+            min_date, max_date = None, None
+            
             if uploaded_file.name.endswith('.json'):
                 data = json.load(uploaded_file)
                 if isinstance(data, list):
@@ -343,6 +361,7 @@ with st.sidebar:
                             if 'id' not in d: d['id'] = str(uuid.uuid4())
                             new_posts.append(d)
             elif uploaded_file.name.endswith('.csv'):
+                # Try different encodings
                 df = None
                 for enc in ['utf-8', 'utf-8-sig', 'cp950']:
                     try:
@@ -350,33 +369,72 @@ with st.sidebar:
                         df = pd.read_csv(uploaded_file, encoding=enc)
                         break
                     except: continue
+                
                 if df is not None:
                     df.columns = df.columns.str.strip()
                     df.rename(columns=CSV_IMPORT_MAP, inplace=True)
                     df = df.fillna(0)
-                    if 'date' in df.columns: df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
+                    
+                    if 'date' in df.columns:
+                        df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
+                    
                     records = df.to_dict('records')
                     for row in records:
                         r_date = str(row.get('date', ''))
                         r_topic = str(row.get('topic', ''))
-                        if r_date in ['NaT', 'nan', '0', ''] or r_topic in ['0', '']: continue
-                        m7 = {'reach': safe_num(row.get('metrics7d_reach', 0)), 'likes': safe_num(row.get('metrics7d_eng', 0)), 'comments': 0, 'shares': 0}
-                        m1 = {'reach': safe_num(row.get('metrics1m_reach', 0)), 'likes': safe_num(row.get('metrics1m_eng', 0)), 'comments': 0, 'shares': 0}
+                        
+                        if r_date in ['NaT', 'nan', '0', '']: continue
+                        if r_topic == '0' or r_topic == '': continue
+                        
+                        if not min_date or r_date < min_date: min_date = r_date
+                        if not max_date or r_date > max_date: max_date = r_date
+                        
+                        m7 = {
+                            'reach': safe_num(row.get('metrics7d_reach', 0)),
+                            'likes': safe_num(row.get('metrics7d_eng', 0)),
+                            'comments': 0, 'shares': 0
+                        }
+                        m1 = {
+                            'reach': safe_num(row.get('metrics1m_reach', 0)),
+                            'likes': safe_num(row.get('metrics1m_eng', 0)),
+                            'comments': 0, 'shares': 0
+                        }
+                        
                         post = {
-                            'id': str(uuid.uuid4()), 'date': r_date, 'platform': str(row.get('platform', 'Facebook')),
-                            'topic': r_topic, 'postType': str(row.get('postType', '')), 'postSubType': str(row.get('postSubType', '')),
-                            'postPurpose': str(row.get('postPurpose', '')), 'postFormat': str(row.get('postFormat', '')),
-                            'projectOwner': str(row.get('projectOwner', '')), 'postOwner': str(row.get('postOwner', '')),
-                            'designer': str(row.get('designer', '')), 'metrics7d': m7, 'metrics1m': m1
+                            'id': str(uuid.uuid4()),
+                            'date': r_date,
+                            'platform': str(row.get('platform', 'Facebook')),
+                            'topic': r_topic,
+                            'postType': str(row.get('postType', '')),
+                            'postSubType': str(row.get('postSubType', '')),
+                            'postPurpose': str(row.get('postPurpose', '')),
+                            'postFormat': str(row.get('postFormat', '')),
+                            'projectOwner': str(row.get('projectOwner', '')),
+                            'postOwner': str(row.get('postOwner', '')),
+                            'designer': str(row.get('designer', '')),
+                            'metrics7d': m7,
+                            'metrics1m': m1
                         }
                         new_posts.append(post)
+                else:
+                    st.error("無法讀取 CSV，請確認編碼。")
+
             if new_posts:
-                if st.button(f"確認匯入 {len(new_posts)} 筆", type="primary"):
+                st.info(f"預覽：讀取到 {len(new_posts)} 筆資料")
+                if min_date and max_date:
+                    st.caption(f"資料日期範圍：{min_date} 至 {max_date}")
+                
+                if st.button("確認匯入", type="primary"):
                     st.session_state.posts.extend(new_posts)
                     save_data(st.session_state.posts)
-                    st.session_state.uploader_key += 1
+                    st.session_state.uploader_key += 1 # Reset uploader
+                    st.success(f"成功匯入 {len(new_posts)} 筆資料！")
                     st.rerun()
-        except Exception as e: st.error(f"匯入錯誤: {e}")
+            else:
+                st.warning("檔案中沒有有效資料，請檢查欄位名稱或日期格式。")
+                
+        except Exception as e:
+            st.error(f"匯入錯誤: {e}")
 
     st.divider()
     date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True, key='date_filter_type')
@@ -389,6 +447,15 @@ with st.sidebar:
         c1, c2 = st.columns(2)
         start_date = c1.date_input("開始", datetime.now().replace(day=1), key='start_date')
         end_date = c2.date_input("結束", datetime.now(), key='end_date')
+    
+    st.divider()
+    with st.expander("🗑️ 危險區域：清空資料"):
+        st.warning("警告：此操作將刪除所有貼文資料，且無法復原！")
+        if st.button("🧨 確認清空所有資料", type="primary", use_container_width=True):
+            st.session_state.posts = []
+            save_data([])
+            st.success("資料已清空！")
+            st.rerun()
 
 # --- 6. Main Page ---
 st.header("📅 2025社群排程與成效")
@@ -397,7 +464,8 @@ tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 # === TAB 1 ===
 with tab1:
     st.markdown("<div id='edit_top'></div>", unsafe_allow_html=True)
-    # JS Injection for scroll
+
+    # JS Injection
     js_code = ""
     if st.session_state.scroll_to_top:
         js_code += """setTimeout(function() { try { var top = window.parent.document.getElementById('edit_top'); if (top) { top.scrollIntoView({behavior: 'smooth', block: 'start'}); } } catch (e) {} }, 150);"""
@@ -413,7 +481,7 @@ with tab1:
         is_edit = st.session_state.editing_post is not None
         target_edit_id = st.session_state.editing_post['id'] if is_edit else None
         
-        # Init form defaults
+        # Init form defaults (Default to First Option, no more "")
         for k in ['entry_date', 'entry_platform_single', 'entry_platform_multi', 'entry_topic', 'entry_type', 'entry_subtype', 'entry_purpose', 'entry_format', 'entry_po', 'entry_owner', 'entry_designer']:
             if k not in st.session_state:
                 if k == 'entry_date': st.session_state[k] = datetime.now()
@@ -427,16 +495,17 @@ with tab1:
                 elif 'designer' in k: st.session_state[k] = DESIGNERS[0]
                 elif 'subtype' in k: st.session_state[k] = "-- 無 --"
                 else: st.session_state[k] = ""
+        
         for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares', 'entry_m1_reach', 'entry_m1_likes', 'entry_m1_comments', 'entry_m1_shares']:
              if k not in st.session_state: st.session_state[k] = 0.0
 
         c1, c2, c3 = st.columns([1, 2, 1])
         f_date = c1.date_input("發布日期", key="entry_date")
         if is_edit:
-            f_platform = c2.selectbox("平台", PLATFORMS, key="entry_platform_single")
+            f_platform = c2.selectbox("平台 (編輯模式僅單選)", PLATFORMS, key="entry_platform_single")
             selected_platforms = [f_platform]
         else:
-            selected_platforms = c2.multiselect("平台", PLATFORMS, key="entry_platform_multi")
+            selected_platforms = c2.multiselect("平台 (可複選)", PLATFORMS, key="entry_platform_multi")
         f_topic = c3.text_input("主題", key="entry_topic")
 
         c4, c5, c6 = st.columns(3)
@@ -484,12 +553,15 @@ with tab1:
                 sub_c3, sub_c4 = st.columns(2)
                 metrics_input['metrics1m']['comments'] = sub_c3.number_input("1月-留言", step=1, key="entry_m1_comments")
                 metrics_input['metrics1m']['shares'] = sub_c4.number_input("1月-分享", step=1, key="entry_m1_shares")
+        else:
+            st.info(f"ℹ️ {current_platform} / {f_format} 不需要填寫成效數據")
 
         submitted = st.button("💾 儲存貼文", type="primary", use_container_width=True)
         if submitted:
             if not f_topic: st.error("請填寫主題")
             else:
                 date_str = f_date.strftime("%Y-%m-%d")
+                target_new_id = None
                 if is_edit:
                     p = selected_platforms[0]
                     base = {'date': date_str, 'topic': f_topic, 'postType': f_type, 'postSubType': f_subtype if f_subtype != "-- 無 --" else "", 'postPurpose': platform_purposes[p], 'postFormat': f_format, 'projectOwner': f_po, 'postOwner': f_owner, 'designer': f_designer, 'status': 'published', 'metrics7d': metrics_input['metrics7d'], 'metrics1m': metrics_input['metrics1m']}
@@ -501,14 +573,17 @@ with tab1:
                 else:
                     for p in selected_platforms:
                         new_id = str(uuid.uuid4())
+                        target_new_id = new_id
                         new_p = {'id': new_id, 'date': date_str, 'platform': p, 'topic': f_topic, 'postType': f_type, 'postSubType': f_subtype if f_subtype != "-- 無 --" else "", 'postPurpose': platform_purposes[p], 'postFormat': f_format, 'projectOwner': f_po, 'postOwner': f_owner, 'designer': f_designer, 'status': 'published', 'metrics7d': metrics_input['metrics7d'], 'metrics1m': metrics_input['metrics1m']}
                         if is_metrics_disabled(p, f_format): new_p['metrics7d'] = {}; new_p['metrics1m'] = {}
                         st.session_state.posts.append(new_p)
-                        st.session_state.target_scroll_id = new_id
+                    st.session_state.target_scroll_id = target_new_id
                     st.success("已新增！")
+                
                 save_data(st.session_state.posts)
                 st.session_state.view_mode_radio = "📋 列表模式"
                 st.session_state.scroll_to_list_item = True
+                
                 for key in st.session_state.keys():
                     if key.startswith("entry_") or key.startswith("purpose_for_"): del st.session_state[key]
                 st.rerun()
@@ -516,6 +591,8 @@ with tab1:
         if st.session_state.editing_post:
             if st.button("取消編輯"):
                 st.session_state.editing_post = None
+                for key in st.session_state.keys():
+                    if key.startswith("entry_"): del st.session_state[key]
                 st.rerun()
 
     # --- Filter Logic ---
@@ -524,6 +601,7 @@ with tab1:
         filtered_posts = [p for p in filtered_posts if p.get('date', '').startswith(selected_month)]
     else:
         filtered_posts = [p for p in filtered_posts if start_date <= datetime.strptime(p.get('date', str(datetime.now().date())), "%Y-%m-%d").date() <= end_date]
+    
     if filter_platform: filtered_posts = [p for p in filtered_posts if p['platform'] in filter_platform]
     if filter_owner: filtered_posts = [p for p in filtered_posts if p['postOwner'] in filter_owner]
     if filter_topic_keyword: filtered_posts = [p for p in filtered_posts if filter_topic_keyword.lower() in p['topic'].lower()]
@@ -538,14 +616,21 @@ with tab1:
     # --- Calendar View ---
     if view_mode == "🗓️ 日曆模式":
         if date_filter_type == "月":
-            try: year_str, month_str = selected_month.split("-"); cal_year, cal_month = int(year_str), int(month_str)
-            except: now = datetime.now(); cal_year, cal_month = now.year, now.month
-        else: cal_year, cal_month = start_date.year, start_date.month
+            try:
+                year_str, month_str = selected_month.split("-")
+                cal_year, cal_month = int(year_str), int(month_str)
+            except:
+                now = datetime.now()
+                cal_year, cal_month = now.year, now.month
+        else:
+            cal_year, cal_month = start_date.year, start_date.month
+
         st.markdown(f"### 🗓️ {cal_year} 年 {cal_month} 月")
         cal = calendar.monthcalendar(cal_year, cal_month)
         cols = st.columns(7)
         weekdays = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
         for i, day in enumerate(weekdays): cols[i].markdown(f"<div class='cal-day-header'>{day}</div>", unsafe_allow_html=True)
+
         for week in cal:
             cols = st.columns(7)
             for i, day in enumerate(week):
@@ -562,22 +647,31 @@ with tab1:
                                 show_bell = False
                                 if not is_metrics_disabled(p['platform'], p['postFormat']):
                                     p_d = datetime.strptime(p['date'], "%Y-%m-%d").date()
-                                    if datetime.now().date() >= (p_d + timedelta(days=7)) and safe_num(p.get('metrics7d', {}).get('reach', 0)) == 0: show_bell = True
+                                    if datetime.now().date() >= (p_d + timedelta(days=7)) and safe_num(p.get('metrics7d', {}).get('reach', 0)) == 0:
+                                        show_bell = True
+                                
                                 mark = PLATFORM_MARKS.get(p['platform'], '🟦')
                                 bell = "🔔" if show_bell else ""
                                 label = f"{mark} {bell}{p['topic'][:4]}.."
                                 if st.button(label, key=f"cal_{p['id']}", help=f"{p['platform']} - {p['topic']}", on_click=go_to_post_from_calendar, args=(p['id'],)): pass
     
-    # --- List View (RWD Optimized) ---
+    # --- List View ---
     else:
         # Pre-process & Sort
+        display_data = [] 
         processed_data = [process_post_metrics(p) for p in filtered_posts]
+        
         col_s1, col_s2, col_cnt = st.columns([1, 1, 4])
-        with col_s1: sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型", "7天觸及", "7天互動", "7天互動率"], index=0, key='sort_by')
+        with col_s1: sort_by = st.selectbox("排序依據", ["日期", "平台", "主題", "貼文類型", "7天觸及", "7天互動", "7天互動率", "30天觸及", "30天互動", "30天互動率"], index=0, key='sort_by')
         with col_s2: sort_order = st.selectbox("順序", ["升序 (舊->新)", "降序 (新->舊)"], index=0, key='sort_order')
-        key_map = {"日期": "_sort_date", "平台": "platform", "主題": "topic", "貼文類型": "postType", "7天觸及": "r7", "7天互動": "e7", "7天互動率": "rate7_val"}
+
+        key_map = { 
+            "日期": "_sort_date", "平台": "platform", "主題": "topic", "貼文類型": "postType",
+            "7天觸及": "r7", "7天互動": "e7", "7天互動率": "rate7_val",
+            "30天觸及": "r30", "30天互動": "e30", "30天互動率": "rate30_val"
+        }
         reverse = True if "降序" in sort_order else False
-        processed_data.sort(key=lambda x: x[key_map.get(sort_by, '_sort_date')], reverse=reverse)
+        processed_data.sort(key=lambda x: x[key_map[sort_by]], reverse=reverse)
 
         with col_cnt:
             st.write("")
@@ -585,13 +679,11 @@ with tab1:
         st.divider()
 
         if processed_data:
-            # === DESKTOP HEADERS ===
-            st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
+            # 12 Cols - FIXED [0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
             cols = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
-            headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日率", "30日率", "負責人", "編", "刪"]
+            headers = ["日期", "平台", "主題", "類型", "目的", "形式", "KPI", "7日互動率", "30日互動率", "負責人", "編輯", "刪除"]
             for c, h in zip(cols, headers): c.markdown(f"**{h}**")
             st.markdown("<hr style='margin:0.5em 0; border-top:1px dashed #ddd;'>", unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
 
             today_s = datetime.now().strftime("%Y-%m-%d")
 
@@ -599,96 +691,205 @@ with tab1:
                 label, color, tooltip = get_performance_label(p['platform'], p.get('metrics7d'), p['postFormat'], st.session_state.standards)
                 is_today = (p['date'] == today_s)
                 is_target = (st.session_state.target_scroll_id == p['id'])
-                pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
                 
-                # Scroll Anchor
-                st.markdown(f"<div id='post_{p['id']}'></div>", unsafe_allow_html=True)
-                
-                # ==========================
-                # 🖥️ DESKTOP ROW RENDER
-                # ==========================
-                st.markdown('<div class="desktop-only">', unsafe_allow_html=True)
                 row_cls = "scroll-highlight" if is_target else ("today-highlight" if is_today else "post-row")
-                st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
-                c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
-                
-                c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
-                c[1].markdown(f"<span class='platform-badge-box' style='background-color:{pf_clr}'>{p['platform']}</span>", unsafe_allow_html=True)
-                c[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
-                c[3].write(p['postType'])
-                c[4].write(p['postPurpose'])
-                c[5].write(p['postFormat'])
-                c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
-                
-                bell7_html = "<span class='overdue-alert'>🔔</span> " if (p['bell7'] and p['platform'] != 'Threads') else ""
-                bell30_html = "<span class='overdue-alert'>🔔</span> " if (p['bell30'] and p['platform'] != 'Threads') else ""
-                
-                c[7].markdown(f"{bell7_html}{p['rate7_str']}", unsafe_allow_html=True)
-                c[8].markdown(f"{bell30_html}{p['rate30_str']}", unsafe_allow_html=True)
-                c[9].write(p['postOwner'])
-                if c[10].button("✏️", key=f"ed_d_{p['id']}", on_click=edit_post_callback, args=(p,)): pass
-                if c[11].button("🗑️", key=f"del_d_{p['id']}", on_click=delete_post_callback, args=(p['id'],)): pass
-                
-                with st.expander("📉 數據"):
-                    dc = st.columns(4)
-                    dc[0].metric("7天觸及", f"{p['r7']:,}")
-                    dc[1].metric("7天互動", f"{p['e7']:,}")
-                    dc[2].metric("30天觸及", f"{p['r30']:,}")
-                    dc[3].metric("30天互動", f"{p['e30']:,}")
-                st.markdown('</div></div>', unsafe_allow_html=True)
+                st.markdown(f"<div id='post_{p['id']}'></div>", unsafe_allow_html=True)
 
-                # ==========================
-                # 📱 MOBILE CARD RENDER
-                # ==========================
-                st.markdown('<div class="mobile-only">', unsafe_allow_html=True)
-                st.markdown(f"""
-                <div class="mobile-card">
-                    <div class="mobile-card-header">
-                        <div>
-                            <span style="color:#666; font-size:0.85em;">{p['date']}</span>
-                            <span class='platform-badge-box' style='background-color:{pf_clr}; margin-left:6px;'>{p['platform']}</span>
-                        </div>
-                        <span class='kpi-badge {color}' style="font-size:0.7em;">{label.split(' ')[-1] if ' ' in label else label}</span>
-                    </div>
-                    <div class="mobile-topic">{p['topic']}</div>
-                    <div class="mobile-meta">
-                        <span class="mobile-meta-item">📌 {p['postType']}</span>
-                        <span class="mobile-meta-item">🎯 {p['postPurpose']}</span>
-                        <span class="mobile-meta-item">📄 {p['postFormat']}</span>
-                        <span class="mobile-meta-item">👤 {p['postOwner']}</span>
-                    </div>
-                """, unsafe_allow_html=True)
-                
-                # Mobile Stats Grid (Optional)
-                if not is_metrics_disabled(p['platform'], p['postFormat']):
-                    st.markdown(f"""
-                    <div class="mobile-stats-grid">
-                        <div>🔥 7天: {p['rate7_str']} <span style='color:#999; font-size:0.8em'>({p['r7']}/{p['e7']})</span></div>
-                        <div>🌳 30天: {p['rate30_str']}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.caption("此形式不需數據")
+                with st.container():
+                    st.markdown(f'<div class="{row_cls}">', unsafe_allow_html=True)
+                    # 12 Cols - FIXED
+                    c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
+                    
+                    c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
+                    pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
+                    c[1].markdown(f"<span class='platform-badge-box' style='background-color:{pf_clr}'>{p['platform']}</span>", unsafe_allow_html=True)
+                    c[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
+                    c[3].write(p['postType'])
+                    c[4].write(p['postPurpose'])
+                    c[5].write(p['postFormat'])
+                    c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
+                    
+                    if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
+                    elif p['platform'] == 'YouTube': c[7].markdown("-", unsafe_allow_html=True)
+                    elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
+                         c[7].markdown(p['rate7_str'], unsafe_allow_html=True) 
+                    else: c[7].markdown(p['rate7_str'], unsafe_allow_html=True)
 
-                # Mobile Buttons (Must use Streamlit native buttons)
-                mc1, mc2 = st.columns(2)
-                if mc1.button("✏️ 編輯", key=f"ed_m_{p['id']}", use_container_width=True, on_click=edit_post_callback, args=(p,)): pass
-                if mc2.button("🗑️ 刪除", key=f"del_m_{p['id']}", use_container_width=True, on_click=delete_post_callback, args=(p['id'],)): pass
-                
-                st.markdown('</div></div>', unsafe_allow_html=True)
+                    if p['bell30'] and p['platform'] != 'Threads': c[8].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
+                    elif p['platform'] == 'YouTube': c[8].markdown("-", unsafe_allow_html=True)
+                    elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
+                         c[8].markdown(p['rate30_str'], unsafe_allow_html=True)
+                    else: c[8].markdown(p['rate30_str'], unsafe_allow_html=True)
+                    
+                    c[9].write(p['postOwner'])
+                    if c[10].button("✏️", key=f"ed_{p['id']}", on_click=edit_post_callback, args=(p,)): pass
+                    if c[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)): pass
 
+                    exp_label = "📉 詳細數據"
+                    if p['platform'] == 'Threads' and (p['bell7'] or p['bell30']): exp_label += " :red[🔔 缺資料]"
+                    
+                    with st.expander(exp_label):
+                        rl = "瀏覽" if p['platform'] == 'Threads' else "觸及"
+                        dc = st.columns(4)
+                        w7 = "🔔 " if (p['bell7'] and p['platform'] == 'Threads') else ""
+                        w30 = "🔔 " if (p['bell30'] and p['platform'] == 'Threads') else ""
+                        dc[0].metric(f"{w7}7天-{rl}", f"{p['r7']:,}")
+                        dc[1].metric(f"{w7}7天-互動", f"{p['e7']:,}")
+                        dc[2].metric(f"{w30}30天-{rl}", f"{p['r30']:,}")
+                        dc[3].metric(f"{w30}30天-互動", f"{p['e30']:,}")
+                    st.markdown('</div>', unsafe_allow_html=True)
+            
             # Export CSV
-            export_df = pd.DataFrame(processed_data).rename(columns={
+            display_data = processed_data
+            export_df = pd.DataFrame(display_data)
+            export_cols = {
                 'date': '日期', 'platform': '平台', 'topic': '主題', 'postType': '類型', 
-                'r7': '7天瀏覽/觸及', 'e7': '7天互動', 'rate7_str': '7天互動率'
-            })
-            csv = export_df.to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 匯出 CSV", csv, "social_posts.csv", "text/csv")
+                'postSubType': '子類型', 'postPurpose': '目的', 'postFormat': '形式',
+                'projectOwner': '專案負責人', 'postOwner': '貼文負責人', 'designer': '美編',
+                'r7': '7天瀏覽/觸及', 'e7': '7天互動', 'rate7_str': '7天互動率',
+                'r30': '30天瀏覽/觸及', 'e30': '30天互動', 'rate30_str': '30天互動率'
+            }
+            export_df = export_df.rename(columns=export_cols)
+            final_cols = [c for c in export_cols.values() if c in export_df.columns]
+            csv = export_df[final_cols].to_csv(index=False).encode('utf-8-sig')
+            st.download_button("📥 匯出 CSV", csv, f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
+
         else:
             st.info("目前沒有符合條件的排程資料。")
 
-# === TAB 2 (Simple Stats) ===
+# === TAB 2 ===
 with tab2:
-    st.markdown("### 📊 簡易統計")
-    # (保留原有的 KPI 設定與統計功能，此處簡化顯示以專注於 Tab 1 的 RWD)
-    st.info("請參考原始程式碼的 Tab 2 功能，或在此加入 KPI 設定介面。")
+    with st.expander("⚙️ KPI 標準設定"):
+        std = st.session_state.standards
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
+            st.subheader("Facebook")
+            st.markdown("**高標**")
+            h_reach = st.number_input("FB高標 觸及", value=std['Facebook']['high']['reach'], key='fb_h_r')
+            h_eng = st.number_input("FB高標 互動", value=std['Facebook']['high'].get('engagement', 100), key='fb_h_e')
+            st.caption(f"預估互動率: {(h_eng/h_reach*100 if h_reach>0 else 0):.1f}%")
+            
+            st.markdown("**標準**")
+            s_reach = st.number_input("FB標準 觸及", value=std['Facebook']['std']['reach'], key='fb_s_r')
+            s_eng = st.number_input("FB標準 互動", value=std['Facebook']['std'].get('engagement', 45), key='fb_s_e')
+            st.caption(f"預估互動率: {(s_eng/s_reach*100 if s_reach>0 else 0):.1f}%")
+
+            st.markdown("**低標**")
+            l_reach = st.number_input("FB低標 觸及", value=std['Facebook']['low']['reach'], key='fb_l_r')
+            l_eng = st.number_input("FB低標 互動", value=std['Facebook']['low'].get('engagement', 15), key='fb_l_e')
+            st.caption(f"預估互動率: {(l_eng/l_reach*100 if l_reach>0 else 0):.1f}%")
+            
+            std['Facebook']['high'] = {'reach': h_reach, 'engagement': h_eng}
+            std['Facebook']['std'] = {'reach': s_reach, 'engagement': s_eng}
+            std['Facebook']['low'] = {'reach': l_reach, 'engagement': l_eng}
+
+        with c2:
+            st.subheader("Instagram")
+            ig_reach = st.number_input("IG 觸及目標", value=std['Instagram']['reach'])
+            ig_eng = st.number_input("IG 互動目標", value=std['Instagram'].get('engagement', 30))
+            ig_rt = (ig_eng/ig_reach*100) if ig_reach>0 else 0
+            st.caption(f"預估互動率: {ig_rt:.2f}%")
+            
+            std['Instagram']['engagement'] = ig_eng
+            std['Instagram']['reach'] = ig_reach
+
+        with c3:
+            st.subheader("Threads")
+            tr_reach_lbl = st.text_input("瀏覽名稱", value=std.get('Threads',{}).get('reach_label', '瀏覽'))
+            tr_reach = st.number_input("瀏覽數值", value=std.get('Threads',{}).get('reach', 500))
+            tr_eng_lbl = st.text_input("互動名稱", value=std.get('Threads',{}).get('engagement_label', '互動'))
+            tr_eng = st.number_input("互動數值", value=std.get('Threads',{}).get('engagement', 50))
+            
+            std['Threads']['reach_label'] = tr_reach_lbl
+            std['Threads']['reach'] = tr_reach
+            std['Threads']['engagement_label'] = tr_eng_lbl
+            std['Threads']['engagement'] = tr_eng
+
+        with c4:
+            st.subheader("其他")
+            st.markdown("**YouTube**")
+            yt_reach = st.number_input("YT 觸及", value=std['YouTube']['reach'])
+            yt_eng = st.number_input("YT 互動", value=std['YouTube'].get('engagement', 20))
+            yt_rt = (yt_eng/yt_reach*100) if yt_reach>0 else 0
+            st.caption(f"預估互動率: {yt_rt:.2f}%")
+            std['YouTube']['reach'] = yt_reach
+            std['YouTube']['engagement'] = yt_eng
+
+            st.markdown("**社團**")
+            grp_reach = st.number_input("社團觸及", value=std['社團']['reach'])
+            grp_eng = st.number_input("社團互動", value=std['社團'].get('engagement', 20))
+            grp_rt = (grp_eng/grp_reach*100) if grp_reach>0 else 0
+            st.caption(f"預估互動率: {grp_rt:.2f}%")
+            std['社團']['reach'] = grp_reach
+            std['社團']['engagement'] = grp_eng
+        
+        if st.button("儲存設定"):
+            st.session_state.standards = std
+            save_standards(std)
+            st.success("已更新！")
+
+    st.markdown("### 📊 成效分析設定")
+    c1, c2, c3 = st.columns(3)
+    p_sel = c1.selectbox("1. 分析基準", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天" if x == "metrics7d" else "🌳 30天")
+    
+    # Use sidebar filtered result directly
+    target = filtered_posts # Copy ref
+    cnt = len(target)
+    
+    st.markdown("---")
+    st.metric("篩選總篇數", cnt)
+    
+    st.markdown("### 🏆 各平台成效")
+    if target:
+        p_stats = []
+        for pf in PLATFORMS:
+            if pf == 'LINE@': continue # Skip LINE@ for now
+            
+            sub = [p for p in target if p['platform'] == pf]
+            if not sub: continue
+            
+            r = e = 0
+            for p in sub:
+                if is_metrics_disabled(p['platform'], p['postFormat']): continue
+                m = p.get(p_sel, {})
+                # Threads/YT included
+                r += safe_num(m.get('reach', 0))
+                e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
+            
+            rt = (e/r*100) if r > 0 else 0
+            rt_s = f"{rt:.2f}%" if pf != 'Threads' else "-"
+            
+            p_stats.append({"平台": pf, "總觸及": int(r), "總互動": int(e), "互動率": rt_s, "篇數": len(sub)})
+        
+        # LINE@ Row (if exists in filter)
+        line_sub = [p for p in target if p['platform'] == 'LINE@']
+        if line_sub:
+             p_stats.append({"平台": "LINE@", "總觸及": "-", "總互動": "-", "互動率": "-", "篇數": len(line_sub)})
+
+        # Total Row
+        p_stats.append({
+            "平台": "📊 總計", 
+            "總觸及": "-", 
+            "總互動": "-", 
+            "互動率": "-",
+            "篇數": cnt
+        })
+        
+        df_stats = pd.DataFrame(p_stats)
+        st.dataframe(df_stats, use_container_width=True, hide_index=True)
+
+    st.markdown("### 🍰 類型分佈")
+    view_type = st.radio("顯示模式", ["📄 表格模式", "📊 圖表模式"], horizontal=True)
+    if target:
+        df = pd.DataFrame(target)
+        if not df.empty:
+            piv = pd.crosstab(df['platform'], df['postType'], margins=True, margins_name="總計")
+            ex_pf = [p for p in PLATFORMS if p in piv.index]
+            final_idx = ex_pf + ["總計"]
+            piv = piv.reindex(final_idx)
+
+            if view_type == "📄 表格模式":
+                st.dataframe(piv, use_container_width=True)
+            else:
+                c_df = piv.drop(index="總計", columns="總計", errors='ignore')
+                st.bar_chart(c_df)
