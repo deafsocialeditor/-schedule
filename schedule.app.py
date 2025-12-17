@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ⚠️ 請填入你的 Google Sheet 網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1Nvqid5fHkcrkOJE322Xqv_R_7kU4krc9q8us3iswRGc/edit?gid=0#gid=0" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/你的ID/edit" 
 STANDARDS_FILE = "social_standards.json"
 
 # Google API Scope
@@ -49,15 +49,6 @@ COL_MAP = {
     'metrics1m_likes': '30天互動',
     'metrics1m_comments': '30天留言',
     'metrics1m_shares': '30天分享'
-}
-
-# --- CSV 匯入欄位對照表 (上傳檔案用) ---
-CSV_IMPORT_MAP = {
-    '日期': 'date', '平台': 'platform', '主題': 'topic', '類型': 'postType',
-    '子類型': 'postSubType', '目的': 'postPurpose', '形式': 'postFormat',
-    '專案負責人': 'projectOwner', '貼文負責人': 'postOwner', '美編': 'designer',
-    '7天瀏覽/觸及': 'metrics7d_reach', '7天互動': 'metrics7d_eng',
-    '30天瀏覽/觸及': 'metrics1m_reach', '30天互動': 'metrics1m_eng'
 }
 
 # 選項定義
@@ -107,18 +98,16 @@ def load_data():
         
         processed_posts = []
         for row in raw_records:
-            # 使用中文 Key 讀取資料
             def get_val(cn_key, default=""):
                 return row.get(cn_key, default)
 
-            # --- 🔥 日期格式自動標準化 (修復日曆空白問題) ---
+            # --- 🔥 日期格式自動標準化 ---
             raw_date = str(get_val('日期', ''))
             try:
-                # 把 2025/1/1, 2025.1.1 等奇怪格式都轉成 2025-01-01
                 std_date = pd.to_datetime(raw_date).strftime('%Y-%m-%d')
             except:
                 std_date = raw_date
-            # ----------------------------------------------
+            # ---------------------------
 
             m7 = {
                 'reach': safe_num(get_val('7天觸及', 0)),
@@ -152,7 +141,6 @@ def load_data():
             processed_posts.append(post)
         return processed_posts
     except Exception as e:
-        # st.error(f"讀取失敗: {e}") 
         return []
 
 def save_data(data):
@@ -161,7 +149,6 @@ def save_data(data):
     try:
         sheet = client.open_by_url(SHEET_URL).sheet1
         
-        # 1. 將資料攤平 (使用程式英文 Key)
         flat_data = []
         for p in data:
             m7 = p.get('metrics7d', {})
@@ -187,11 +174,9 @@ def save_data(data):
 
         if flat_data:
             df = pd.DataFrame(flat_data)
-            
-            # 2. 將英文欄位名稱 -> 轉換為中文
             df = df.rename(columns=COL_MAP)
             
-            # 3. 確保欄位順序 (中文)
+            # 中文欄位順序
             chinese_cols_order = [
                 'ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', 
                 '專案負責人', '貼文負責人', '美編', '狀態',
@@ -199,24 +184,22 @@ def save_data(data):
                 '30天觸及', '30天互動', '30天留言', '30天分享'
             ]
             
-            # 防呆：補齊沒出現的欄位
             for c in chinese_cols_order:
                 if c not in df.columns: df[c] = ""
             
-            df = df[chinese_cols_order] # 排序
+            df = df[chinese_cols_order]
             
             sheet.clear()
             update_data = [df.columns.values.tolist()] + df.values.tolist()
             sheet.update(update_data)
         else:
-            # 如果是空的，至少寫入標題
             sheet.clear()
             sheet.append_row(list(COL_MAP.values()))
 
     except Exception as e:
         st.error(f"儲存失敗: {e}")
 
-# KPI 標準 (維持不變)
+# KPI 標準
 def load_standards():
     defaults = {'Facebook': {'type': 'tiered', 'high': {'reach': 2000, 'engagement': 100}, 'std': {'reach': 1500, 'engagement': 45}, 'low': {'reach': 1000, 'engagement': 15}},'Instagram': {'type': 'simple', 'reach': 900, 'engagement': 30},'Threads': {'type': 'reference', 'reach': 500, 'reach_label': '瀏覽', 'engagement': 50, 'engagement_label': '互動', 'rate': 0},'YouTube': {'type': 'simple', 'reach': 500, 'engagement': 20},'LINE@': {'type': 'simple', 'reach': 0, 'engagement': 0},'社團': {'type': 'simple', 'reach': 500, 'engagement': 20}}
     if not os.path.exists(STANDARDS_FILE): return defaults
@@ -373,62 +356,7 @@ with st.sidebar:
     filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)", key='filter_topic_keyword')
     
     st.divider()
-    st.subheader("📥 匯入資料")
-    uploaded_file = st.file_uploader("上傳 CSV 或 JSON", type=['csv', 'json'], key=f"uploader_{st.session_state.uploader_key}")
-    
-    if uploaded_file:
-        try:
-            new_posts = []
-            min_date, max_date = None, None
-            
-            if uploaded_file.name.endswith('.json'):
-                data = json.load(uploaded_file)
-                if isinstance(data, list):
-                    for d in data:
-                        if 'date' in d and 'topic' in d:
-                            if 'id' not in d: d['id'] = str(uuid.uuid4())
-                            new_posts.append(d)
-            elif uploaded_file.name.endswith('.csv'):
-                try:
-                    uploaded_file.seek(0)
-                    df = pd.read_csv(uploaded_file, encoding='utf-8-sig', sep=None, engine='python')
-                except:
-                    uploaded_file.seek(0)
-                    df = pd.read_csv(uploaded_file, encoding='cp950', sep=None, engine='python')
-                
-                if df is not None:
-                    df.columns = df.columns.str.replace(' ', '').str.replace('\t', '').str.strip()
-                    df.rename(columns=CSV_IMPORT_MAP, inplace=True)
-                    df = df.fillna(0)
-                    if 'date' in df.columns:
-                        df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
-                    records = df.to_dict('records')
-                    for row in records:
-                        r_date = str(row.get('date', '')); r_topic = str(row.get('topic', ''))
-                        if r_date in ['NaT', 'nan', '0', '']: continue
-                        if r_topic == '0' or r_topic == '': continue
-                        if not min_date or r_date < min_date: min_date = r_date
-                        if not max_date or r_date > max_date: max_date = r_date
-                        m7 = {'reach': safe_num(row.get('metrics7d_reach', 0)), 'likes': safe_num(row.get('metrics7d_eng', 0)), 'comments': 0, 'shares': 0}
-                        m1 = {'reach': safe_num(row.get('metrics1m_reach', 0)), 'likes': safe_num(row.get('metrics1m_eng', 0)), 'comments': 0, 'shares': 0}
-                        post = {'id': str(uuid.uuid4()), 'date': r_date, 'platform': str(row.get('platform', 'Facebook')), 'topic': r_topic, 'postType': str(row.get('postType', '')), 'postSubType': str(row.get('postSubType', '')), 'postPurpose': str(row.get('postPurpose', '')), 'postFormat': str(row.get('postFormat', '')), 'projectOwner': str(row.get('projectOwner', '')), 'postOwner': str(row.get('postOwner', '')), 'designer': str(row.get('designer', '')), 'metrics7d': m7, 'metrics1m': m1}
-                        new_posts.append(post)
-
-            if new_posts:
-                st.info(f"預覽：讀取到 {len(new_posts)} 筆資料")
-                if st.button("確認匯入至雲端", type="primary"):
-                    st.session_state.posts.extend(new_posts)
-                    save_data(st.session_state.posts)
-                    st.session_state.uploader_key += 1
-                    st.success(f"成功匯入 {len(new_posts)} 筆資料並同步至 Google Sheets！")
-                    st.rerun()
-            elif uploaded_file:
-                st.warning("檔案中沒有有效資料。")
-        except Exception as e:
-            st.error(f"匯入錯誤: {e}")
-
-    st.divider()
-    if st.button("🔨 修復試算表標題 (中文)"):
+    if st.button("🔨 重置標體"):
         try:
             client = get_client()
             if client:
