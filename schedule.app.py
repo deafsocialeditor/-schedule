@@ -447,6 +447,7 @@ if st.button("🔄 強制同步雲端資料"):
         st.session_state.posts = load_data()
         st.success("已更新！")
         st.rerun()
+        
     st.title("🔎 篩選條件")
     if st.button("🧹 重置所有篩選", use_container_width=True):
         reset_filters()
