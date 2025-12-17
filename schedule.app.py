@@ -44,6 +44,15 @@ ICONS = {
     'reach': '👀', 'likes': '❤️', 'comments': '💬', 'rate': '📈'
 }
 
+# CSV 欄位對照 (匯入用：中文 -> 英文 key)
+CSV_IMPORT_MAP = {
+    '日期': 'date', '平台': 'platform', '主題': 'topic', '類型': 'postType',
+    '子類型': 'postSubType', '目的': 'postPurpose', '形式': 'postFormat',
+    '專案負責人': 'projectOwner', '貼文負責人': 'postOwner', '美編': 'designer',
+    '7天瀏覽/觸及': 'metrics7d_reach', '7天互動': 'metrics7d_eng',
+    '30天瀏覽/觸及': 'metrics1m_reach', '30天互動': 'metrics1m_eng'
+}
+
 # 平台顏色
 PLATFORM_COLORS = {
     'Facebook': '#1877F2', 'Instagram': '#E1306C', 'LINE@': '#06C755',
