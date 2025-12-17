@@ -12,10 +12,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="2025社群排程與成效",
-    page_icon="📅",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="2025社群排程與成效",
+    page_icon="📅",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
 # ⚠️ 請填入你的 Google Sheet 網址
