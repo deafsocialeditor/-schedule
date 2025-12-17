@@ -478,7 +478,7 @@ with st.sidebar:
                 for enc in ['utf-8', 'utf-8-sig', 'cp950']:
                     try:
                         uploaded_file.seek(0)
-                        df = pd.read_csv(uploaded_file, encoding=enc)
+                        df = pd.read_csv(uploaded_file, encoding=enc, sep=None, engine='python')
                         break
                     except: continue
                 
