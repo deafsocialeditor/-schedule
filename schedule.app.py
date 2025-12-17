@@ -444,7 +444,7 @@ st.markdown(f"""
 # --- 5. Sidebar ---
 with st.sidebar:
 
-if st.button("🔄 強制同步雲端資料"):
+    if st.button("🔄 強制同步雲端資料"):
         st.session_state.posts = load_data()
         st.success("已更新！")
         st.rerun()
