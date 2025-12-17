@@ -447,6 +447,97 @@ with st.sidebar:
     filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)", key='filter_topic_keyword')
     
     st.divider()
+    st.divider()
+    st.subheader("📥 匯入資料")
+    uploaded_file = st.file_uploader("上傳 CSV 或 JSON", type=['csv', 'json'], key=f"uploader_{st.session_state.uploader_key}")
+    
+    if uploaded_file:
+        try:
+            new_posts = []
+            min_date, max_date = None, None
+            
+            if uploaded_file.name.endswith('.json'):
+                data = json.load(uploaded_file)
+                if isinstance(data, list):
+                    for d in data:
+                        if 'date' in d and 'topic' in d:
+                            if 'id' not in d: d['id'] = str(uuid.uuid4())
+                            new_posts.append(d)
+            elif uploaded_file.name.endswith('.csv'):
+                # Try different encodings
+                df = None
+                for enc in ['utf-8', 'utf-8-sig', 'cp950']:
+                    try:
+                        uploaded_file.seek(0)
+                        df = pd.read_csv(uploaded_file, encoding=enc)
+                        break
+                    except: continue
+                
+                if df is not None:
+                    df.columns = df.columns.str.strip()
+                    df.rename(columns=CSV_IMPORT_MAP, inplace=True)
+                    df = df.fillna(0)
+                    
+                    if 'date' in df.columns:
+                        df['date'] = pd.to_datetime(df['date'], errors='coerce').dt.strftime('%Y-%m-%d')
+                    
+                    records = df.to_dict('records')
+                    for row in records:
+                        r_date = str(row.get('date', ''))
+                        r_topic = str(row.get('topic', ''))
+                        
+                        if r_date in ['NaT', 'nan', '0', '']: continue
+                        if r_topic == '0' or r_topic == '': continue
+                        
+                        if not min_date or r_date < min_date: min_date = r_date
+                        if not max_date or r_date > max_date: max_date = r_date
+                        
+                        m7 = {
+                            'reach': safe_num(row.get('metrics7d_reach', 0)),
+                            'likes': safe_num(row.get('metrics7d_eng', 0)),
+                            'comments': 0, 'shares': 0
+                        }
+                        m1 = {
+                            'reach': safe_num(row.get('metrics1m_reach', 0)),
+                            'likes': safe_num(row.get('metrics1m_eng', 0)),
+                            'comments': 0, 'shares': 0
+                        }
+                        
+                        post = {
+                            'id': str(uuid.uuid4()),
+                            'date': r_date,
+                            'platform': str(row.get('platform', 'Facebook')),
+                            'topic': r_topic,
+                            'postType': str(row.get('postType', '')),
+                            'postSubType': str(row.get('postSubType', '')),
+                            'postPurpose': str(row.get('postPurpose', '')),
+                            'postFormat': str(row.get('postFormat', '')),
+                            'projectOwner': str(row.get('projectOwner', '')),
+                            'postOwner': str(row.get('postOwner', '')),
+                            'designer': str(row.get('designer', '')),
+                            'metrics7d': m7,
+                            'metrics1m': m1
+                        }
+                        new_posts.append(post)
+                else:
+                    st.error("無法讀取 CSV，請確認編碼。")
+
+            if new_posts:
+                st.info(f"預覽：讀取到 {len(new_posts)} 筆資料")
+                if min_date and max_date:
+                    st.caption(f"資料日期範圍：{min_date} 至 {max_date}")
+                
+                if st.button("確認匯入至雲端", type="primary"):
+                    st.session_state.posts.extend(new_posts)
+                    save_data(st.session_state.posts) # 這裡會直接存到 Google Sheets
+                    st.session_state.uploader_key += 1 # Reset uploader
+                    st.success(f"成功匯入 {len(new_posts)} 筆資料並同步至 Google Sheets！")
+                    st.rerun()
+            else:
+                st.warning("檔案中沒有有效資料，請檢查欄位名稱或日期格式。")
+                
+        except Exception as e:
+            st.error(f"匯入錯誤: {e}")
     
     # 初始化按鈕 (避免空白表格錯誤)
     if st.button("🆘 初始化試算表標題"):
