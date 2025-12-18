@@ -19,14 +19,13 @@ st.set_page_config(
 )
 
 # ⚠️ 請填入你的 Google Sheet 網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1Nvqid5fHkcrkOJE322Xqv_R_7kU4krc9q8us3iswRGc/edit?gid=0#gid=0" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/你的ID/edit" 
 STANDARDS_FILE = "social_standards.json"
 
 # Google API Scope
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 
-# --- 核心設定：Google Sheet 中文欄位對照表 (已修正互動邏輯) ---
-# 修正：將 'likes' 對應到 '按讚'，而非 '互動'
+# --- 核心設定：Google Sheet 中文欄位對照表 ---
 COL_MAP = {
     'id': 'ID',
     'date': '日期',
@@ -42,11 +41,11 @@ COL_MAP = {
     'status': '狀態',
     # 成效數據 (Input)
     'metrics7d_reach': '7天觸及',
-    'metrics7d_likes': '7天按讚',     # 👈 修正這裡
+    'metrics7d_likes': '7天按讚',
     'metrics7d_comments': '7天留言',
     'metrics7d_shares': '7天分享',
     'metrics1m_reach': '30天觸及',
-    'metrics1m_likes': '30天按讚',    # 👈 修正這裡
+    'metrics1m_likes': '30天按讚',
     'metrics1m_comments': '30天留言',
     'metrics1m_shares': '30天分享'
 }
@@ -57,9 +56,11 @@ MAIN_POST_TYPES = ['喜餅', '彌月', '伴手禮', '社群互動', '圓夢計�
 SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
-PROJECT_OWNERS = ['夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
+
+# 👇 修改：在最前面加入空字串 "" 以產生空白選項
+PROJECT_OWNERS = ['', '夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
 POST_OWNERS = ['一千', '楷曜', '可榆']
-DESIGNERS = ['千惟', '靖嬙']
+DESIGNERS = ['', '千惟', '靖嬙']
 
 # 樣式設定
 ICONS = {'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵', '社團': '👥'}
@@ -109,16 +110,15 @@ def load_data():
                 std_date = raw_date
             # ---------------------------
 
-            # 讀取數據 (注意：這裡是讀取「按讚」)
             m7 = {
                 'reach': safe_num(get_val('7天觸及', 0)),
-                'likes': safe_num(get_val('7天按讚', 0)), # 👈 讀取按讚
+                'likes': safe_num(get_val('7天按讚', 0)),
                 'comments': safe_num(get_val('7天留言', 0)),
                 'shares': safe_num(get_val('7天分享', 0))
             }
             m1 = {
                 'reach': safe_num(get_val('30天觸及', 0)),
-                'likes': safe_num(get_val('30天按讚', 0)), # 👈 讀取按讚
+                'likes': safe_num(get_val('30天按讚', 0)),
                 'comments': safe_num(get_val('30天留言', 0)),
                 'shares': safe_num(get_val('30天分享', 0))
             }
@@ -177,11 +177,10 @@ def save_data(data):
             df = pd.DataFrame(flat_data)
             df = df.rename(columns=COL_MAP)
             
-            # 中文欄位順序 (更新為「按讚」)
             chinese_cols_order = [
                 'ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', 
                 '專案負責人', '貼文負責人', '美編', '狀態',
-                '7天觸及', '7天按讚', '7天留言', '7天分享', # 👈 順序
+                '7天觸及', '7天按讚', '7天留言', '7天分享',
                 '30天觸及', '30天按讚', '30天留言', '30天分享'
             ]
             
@@ -218,7 +217,7 @@ def get_performance_label(platform, metrics, fmt, standards):
     reach = safe_num(metrics.get('reach', 0))
     if reach == 0: return "-", "gray", "尚未填寫數據"
     
-    # 🔥 自動計算互動數 (按讚+留言+分享)
+    # 🔥 自動計算互動 (按讚+留言+分享)
     eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
     
     rate = (eng / reach) * 100
@@ -258,7 +257,7 @@ def get_performance_label(platform, metrics, fmt, standards):
 def process_post_metrics(p):
     m7 = p.get('metrics7d', {}); m30 = p.get('metrics1m', {})
     
-    # 🔥 自動計算互動 (互動 = 按讚 + 留言 + 分享)
+    # 🔥 自動計算互動 (按讚+留言+分享)
     r7 = safe_num(m7.get('reach', 0))
     e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
     
@@ -290,9 +289,11 @@ def edit_post_callback(post):
     sub = post.get('postSubType', ''); st.session_state['entry_subtype'] = sub if sub in SOUVENIR_SUB_TYPES else "-- 無 --"
     st.session_state['entry_purpose'] = post['postPurpose'] if post['postPurpose'] in POST_PURPOSES else POST_PURPOSES[0]
     st.session_state['entry_format'] = post['postFormat'] if post['postFormat'] in POST_FORMATS else POST_FORMATS[0]
+    # 👇 更新 callback 以適應空白選項 (若值不在清單中或為空，設為清單[0]即空白)
     st.session_state['entry_po'] = post['projectOwner'] if post['projectOwner'] in PROJECT_OWNERS else PROJECT_OWNERS[0]
     st.session_state['entry_owner'] = post['postOwner'] if post['postOwner'] in POST_OWNERS else POST_OWNERS[0]
     st.session_state['entry_designer'] = post['designer'] if post['designer'] in DESIGNERS else DESIGNERS[0]
+    
     m7 = post.get('metrics7d', {}); st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0)); st.session_state['entry_m7_likes'] = safe_num(m7.get('likes', 0)); st.session_state['entry_m7_comments'] = safe_num(m7.get('comments', 0)); st.session_state['entry_m7_shares'] = safe_num(m7.get('shares', 0))
     m1 = post.get('metrics1m', {}); st.session_state['entry_m1_reach'] = safe_num(m1.get('reach', 0)); st.session_state['entry_m1_likes'] = safe_num(m1.get('likes', 0)); st.session_state['entry_m1_comments'] = safe_num(m1.get('comments', 0)); st.session_state['entry_m1_shares'] = safe_num(m1.get('shares', 0))
 
@@ -366,18 +367,6 @@ with st.sidebar:
     filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)", key='filter_topic_keyword')
     
     st.divider()
-    if st.button("🔨 修復試算表標題 (中文)"):
-        try:
-            client = get_client()
-            if client:
-                sheet = client.open_by_url(SHEET_URL).sheet1
-                # 修正後的標題：包含「按讚」而非「互動」
-                chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天按讚', '7天留言', '7天分享', '30天觸及', '30天按讚', '30天留言', '30天分享']
-                sheet.clear(); sheet.append_row(chinese_cols_order)
-                st.success("已重置標題為 (7天按讚)！")
-        except Exception as e: st.error(f"失敗: {e}")
-
-    st.divider()
     date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True, key='date_filter_type')
     if date_filter_type == "月":
         dates = [p['date'] for p in st.session_state.posts] if st.session_state.posts else [datetime.now().strftime("%Y-%m-%d")]
@@ -390,8 +379,26 @@ with st.sidebar:
         end_date = c2.date_input("結束", datetime.now(), key='end_date')
     
     st.divider()
-    with st.expander("🗑️ 危險區域：清空資料"):
-        if st.button("🧨 確認清空所有資料", type="primary", use_container_width=True):
+    
+    # --- 🔥 危險區域 (整合版) ---
+    with st.expander("⚠️ 管理員專區 (危險操作)"):
+        st.warning("請謹慎操作，動作會直接影響 Google Sheet！")
+        
+        # 1. 修復標題
+        if st.button("🔨 重置試算表標題 (中文)"):
+            try:
+                client = get_client()
+                if client:
+                    sheet = client.open_by_url(SHEET_URL).sheet1
+                    chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天按讚', '7天留言', '7天分享', '30天觸及', '30天按讚', '30天留言', '30天分享']
+                    sheet.clear(); sheet.append_row(chinese_cols_order)
+                    st.success("已重置標題為 (7天按讚)！")
+            except Exception as e: st.error(f"失敗: {e}")
+            
+        st.write("") # 空行分隔
+
+        # 2. 清空資料
+        if st.button("🧨 確認清空所有資料", type="primary"):
             st.session_state.posts = []; save_data([]); st.success("資料已清空！"); st.rerun()
 
 # --- 6. Main Page ---
@@ -425,6 +432,7 @@ with tab1:
                 elif 'type' in k: st.session_state[k] = MAIN_POST_TYPES[0]
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
                 elif 'format' in k: st.session_state[k] = POST_FORMATS[0]
+                # 👇 初始化時也預設為空白 (使用 PROJECT_OWNERS[0] 也就是 "")
                 elif 'po' in k: st.session_state[k] = PROJECT_OWNERS[0]
                 elif 'owner' in k: st.session_state[k] = POST_OWNERS[0]
                 elif 'designer' in k: st.session_state[k] = DESIGNERS[0]
