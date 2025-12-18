@@ -25,8 +25,8 @@ STANDARDS_FILE = "social_standards.json"
 # Google API Scope
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 
-# --- 核心設定：Google Sheet 中文欄位對照表 ---
-# 左邊是程式用的(英文)，右邊是試算表顯示的(中文)
+# --- 核心設定：Google Sheet 中文欄位對照表 (已修正互動邏輯) ---
+# 修正：將 'likes' 對應到 '按讚'，而非 '互動'
 COL_MAP = {
     'id': 'ID',
     'date': '日期',
@@ -40,13 +40,13 @@ COL_MAP = {
     'postOwner': '貼文負責人',
     'designer': '美編',
     'status': '狀態',
-    # 成效數據
+    # 成效數據 (Input)
     'metrics7d_reach': '7天觸及',
-    'metrics7d_likes': '7天互動',
+    'metrics7d_likes': '7天按讚',     # 👈 修正這裡
     'metrics7d_comments': '7天留言',
     'metrics7d_shares': '7天分享',
     'metrics1m_reach': '30天觸及',
-    'metrics1m_likes': '30天互動',
+    'metrics1m_likes': '30天按讚',    # 👈 修正這裡
     'metrics1m_comments': '30天留言',
     'metrics1m_shares': '30天分享'
 }
@@ -94,7 +94,7 @@ def load_data():
     if not client: return []
     try:
         sheet = client.open_by_url(SHEET_URL).sheet1
-        raw_records = sheet.get_all_records() # 讀取下來的是中文 Key
+        raw_records = sheet.get_all_records()
         
         processed_posts = []
         for row in raw_records:
@@ -109,15 +109,16 @@ def load_data():
                 std_date = raw_date
             # ---------------------------
 
+            # 讀取數據 (注意：這裡是讀取「按讚」)
             m7 = {
                 'reach': safe_num(get_val('7天觸及', 0)),
-                'likes': safe_num(get_val('7天互動', 0)),
+                'likes': safe_num(get_val('7天按讚', 0)), # 👈 讀取按讚
                 'comments': safe_num(get_val('7天留言', 0)),
                 'shares': safe_num(get_val('7天分享', 0))
             }
             m1 = {
                 'reach': safe_num(get_val('30天觸及', 0)),
-                'likes': safe_num(get_val('30天互動', 0)),
+                'likes': safe_num(get_val('30天按讚', 0)), # 👈 讀取按讚
                 'comments': safe_num(get_val('30天留言', 0)),
                 'shares': safe_num(get_val('30天分享', 0))
             }
@@ -176,12 +177,12 @@ def save_data(data):
             df = pd.DataFrame(flat_data)
             df = df.rename(columns=COL_MAP)
             
-            # 中文欄位順序
+            # 中文欄位順序 (更新為「按讚」)
             chinese_cols_order = [
                 'ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', 
                 '專案負責人', '貼文負責人', '美編', '狀態',
-                '7天觸及', '7天互動', '7天留言', '7天分享',
-                '30天觸及', '30天互動', '30天留言', '30天分享'
+                '7天觸及', '7天按讚', '7天留言', '7天分享', # 👈 順序
+                '30天觸及', '30天按讚', '30天留言', '30天分享'
             ]
             
             for c in chinese_cols_order:
@@ -216,7 +217,10 @@ def get_performance_label(platform, metrics, fmt, standards):
     if is_metrics_disabled(platform, fmt): return "🚫 不計", "gray", "此形式/平台不需計算成效"
     reach = safe_num(metrics.get('reach', 0))
     if reach == 0: return "-", "gray", "尚未填寫數據"
+    
+    # 🔥 自動計算互動數 (按讚+留言+分享)
     eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
+    
     rate = (eng / reach) * 100
     std = standards.get(platform, {})
     if not std: return "-", "gray", "未設定標準"
@@ -253,8 +257,14 @@ def get_performance_label(platform, metrics, fmt, standards):
 
 def process_post_metrics(p):
     m7 = p.get('metrics7d', {}); m30 = p.get('metrics1m', {})
-    r7 = safe_num(m7.get('reach', 0)); e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
-    r30 = safe_num(m30.get('reach', 0)); e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
+    
+    # 🔥 自動計算互動 (互動 = 按讚 + 留言 + 分享)
+    r7 = safe_num(m7.get('reach', 0))
+    e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
+    
+    r30 = safe_num(m30.get('reach', 0))
+    e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
+    
     rate7_val = (e7 / r7 * 100) if r7 > 0 else 0; rate30_val = (e30 / r30 * 100) if r30 > 0 else 0
     disabled = is_metrics_disabled(p.get('platform'), p.get('postFormat')); is_threads = p.get('platform') == 'Threads'
     rate7_str = "-"; rate30_str = "-"
@@ -356,14 +366,15 @@ with st.sidebar:
     filter_topic_keyword = st.text_input("搜尋主題 (關鍵字)", key='filter_topic_keyword')
     
     st.divider()
-    if st.button("🔨 重置標體"):
+    if st.button("🔨 修復試算表標題 (中文)"):
         try:
             client = get_client()
             if client:
                 sheet = client.open_by_url(SHEET_URL).sheet1
-                chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天互動', '7天留言', '7天分享', '30天觸及', '30天互動', '30天留言', '30天分享']
+                # 修正後的標題：包含「按讚」而非「互動」
+                chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天按讚', '7天留言', '7天分享', '30天觸及', '30天按讚', '30天留言', '30天分享']
                 sheet.clear(); sheet.append_row(chinese_cols_order)
-                st.success("已重置標題！")
+                st.success("已重置標題為 (7天按讚)！")
         except Exception as e: st.error(f"失敗: {e}")
 
     st.divider()
@@ -668,145 +679,4 @@ with tab1:
             export_df = pd.DataFrame(display_data)
             export_df = export_df.rename(columns=COL_MAP)
             final_cols = [c for c in COL_MAP.values() if c in export_df.columns]
-            csv = export_df[final_cols].to_csv(index=False).encode('utf-8-sig')
-            st.download_button("📥 匯出 CSV", csv, f"social_posts_{datetime.now().strftime('%Y%m%d')}.csv", "text/csv")
-
-        else:
-            st.info("目前沒有符合條件的排程資料。")
-
-# === TAB 2 ===
-with tab2:
-    with st.expander("⚙️ KPI 標準設定"):
-        std = st.session_state.standards
-        c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.subheader("Facebook")
-            st.markdown("**高標**")
-            h_reach = st.number_input("FB高標 觸及", value=std['Facebook']['high']['reach'], key='fb_h_r')
-            h_eng = st.number_input("FB高標 互動", value=std['Facebook']['high'].get('engagement', 100), key='fb_h_e')
-            st.caption(f"預估互動率: {(h_eng/h_reach*100 if h_reach>0 else 0):.1f}%")
-            
-            st.markdown("**標準**")
-            s_reach = st.number_input("FB標準 觸及", value=std['Facebook']['std']['reach'], key='fb_s_r')
-            s_eng = st.number_input("FB標準 互動", value=std['Facebook']['std'].get('engagement', 45), key='fb_s_e')
-            st.caption(f"預估互動率: {(s_eng/s_reach*100 if s_reach>0 else 0):.1f}%")
-
-            st.markdown("**低標**")
-            l_reach = st.number_input("FB低標 觸及", value=std['Facebook']['low']['reach'], key='fb_l_r')
-            l_eng = st.number_input("FB低標 互動", value=std['Facebook']['low'].get('engagement', 15), key='fb_l_e')
-            st.caption(f"預估互動率: {(l_eng/l_reach*100 if l_reach>0 else 0):.1f}%")
-            
-            std['Facebook']['high'] = {'reach': h_reach, 'engagement': h_eng}
-            std['Facebook']['std'] = {'reach': s_reach, 'engagement': s_eng}
-            std['Facebook']['low'] = {'reach': l_reach, 'engagement': l_eng}
-
-        with c2:
-            st.subheader("Instagram")
-            ig_reach = st.number_input("IG 觸及目標", value=std['Instagram']['reach'])
-            ig_eng = st.number_input("IG 互動目標", value=std['Instagram'].get('engagement', 30))
-            ig_rt = (ig_eng/ig_reach*100) if ig_reach>0 else 0
-            st.caption(f"預估互動率: {ig_rt:.2f}%")
-            
-            std['Instagram']['engagement'] = ig_eng
-            std['Instagram']['reach'] = ig_reach
-
-        with c3:
-            st.subheader("Threads")
-            tr_reach_lbl = st.text_input("瀏覽名稱", value=std.get('Threads',{}).get('reach_label', '瀏覽'))
-            tr_reach = st.number_input("瀏覽數值", value=std.get('Threads',{}).get('reach', 500))
-            tr_eng_lbl = st.text_input("互動名稱", value=std.get('Threads',{}).get('engagement_label', '互動'))
-            tr_eng = st.number_input("互動數值", value=std.get('Threads',{}).get('engagement', 50))
-            
-            std['Threads']['reach_label'] = tr_reach_lbl
-            std['Threads']['reach'] = tr_reach
-            std['Threads']['engagement_label'] = tr_eng_lbl
-            std['Threads']['engagement'] = tr_eng
-
-        with c4:
-            st.subheader("其他")
-            st.markdown("**YouTube**")
-            yt_reach = st.number_input("YT 觸及", value=std['YouTube']['reach'])
-            yt_eng = st.number_input("YT 互動", value=std['YouTube'].get('engagement', 20))
-            yt_rt = (yt_eng/yt_reach*100) if yt_reach>0 else 0
-            st.caption(f"預估互動率: {yt_rt:.2f}%")
-            std['YouTube']['reach'] = yt_reach
-            std['YouTube']['engagement'] = yt_eng
-
-            st.markdown("**社團**")
-            grp_reach = st.number_input("社團觸及", value=std['社團']['reach'])
-            grp_eng = st.number_input("社團互動", value=std['社團'].get('engagement', 20))
-            grp_rt = (grp_eng/grp_reach*100) if grp_reach>0 else 0
-            st.caption(f"預估互動率: {grp_rt:.2f}%")
-            std['社團']['reach'] = grp_reach
-            std['社團']['engagement'] = grp_eng
-        
-        if st.button("儲存設定"):
-            st.session_state.standards = std
-            save_standards(std)
-            st.success("已更新！")
-
-    st.markdown("### 📊 成效分析設定")
-    c1, c2, c3 = st.columns(3)
-    p_sel = c1.selectbox("1. 分析基準", ["metrics7d", "metrics1m"], format_func=lambda x: "🔥 7天" if x == "metrics7d" else "🌳 30天")
-    
-    # Use sidebar filtered result directly
-    target = filtered_posts # Copy ref
-    cnt = len(target)
-    
-    st.markdown("---")
-    st.metric("篩選總篇數", cnt)
-    
-    st.markdown("### 🏆 各平台成效")
-    if target:
-        p_stats = []
-        for pf in PLATFORMS:
-            if pf == 'LINE@': continue # Skip LINE@ for now
-            
-            sub = [p for p in target if p['platform'] == pf]
-            if not sub: continue
-            
-            r = e = 0
-            for p in sub:
-                if is_metrics_disabled(p['platform'], p['postFormat']): continue
-                m = p.get(p_sel, {})
-                # Threads/YT included
-                r += safe_num(m.get('reach', 0))
-                e += (safe_num(m.get('likes', 0)) + safe_num(m.get('comments', 0)) + safe_num(m.get('shares', 0)))
-            
-            rt = (e/r*100) if r > 0 else 0
-            rt_s = f"{rt:.2f}%" if pf != 'Threads' else "-"
-            
-            p_stats.append({"平台": pf, "總觸及": int(r), "總互動": int(e), "互動率": rt_s, "篇數": len(sub)})
-        
-        # LINE@ Row (if exists in filter)
-        line_sub = [p for p in target if p['platform'] == 'LINE@']
-        if line_sub:
-             p_stats.append({"平台": "LINE@", "總觸及": "-", "總互動": "-", "互動率": "-", "篇數": len(line_sub)})
-
-        # Total Row
-        p_stats.append({
-            "平台": "📊 總計", 
-            "總觸及": "-", 
-            "總互動": "-", 
-            "互動率": "-",
-            "篇數": cnt
-        })
-        
-        df_stats = pd.DataFrame(p_stats)
-        st.dataframe(df_stats, use_container_width=True, hide_index=True)
-
-    st.markdown("### 🍰 類型分佈")
-    view_type = st.radio("顯示模式", ["📄 表格模式", "📊 圖表模式"], horizontal=True)
-    if target:
-        df = pd.DataFrame(target)
-        if not df.empty:
-            piv = pd.crosstab(df['platform'], df['postType'], margins=True, margins_name="總計")
-            ex_pf = [p for p in PLATFORMS if p in piv.index]
-            final_idx = ex_pf + ["總計"]
-            piv = piv.reindex(final_idx)
-
-            if view_type == "📄 表格模式":
-                st.dataframe(piv, use_container_width=True)
-            else:
-                c_df = piv.drop(index="總計", columns="總計", errors='ignore')
-                st.bar_chart(c_df)
+            csv = export_df[final_cols].to_csv(index=False).encode('utf
