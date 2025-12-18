@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ⚠️ 請填入你的 Google Sheet 網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1Nvqid5fHkcrkOJE322Xqv_R_7kU4krc9q8us3iswRGc/edit?gid=0#gid=0" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/你的ID/edit" 
 STANDARDS_FILE = "social_standards.json"
 
 # Google API Scope
@@ -102,11 +102,17 @@ def load_data():
             def get_val(cn_key, default=""):
                 return row.get(cn_key, default)
 
-            raw_date = str(get_val('日期', ''))
+            # 🔥 修正重點 1: 如果「主題」跟「日期」都是空的，直接跳過 (防止讀入空白列)
+            r_topic = str(get_val('主題', '')).strip()
+            r_date = str(get_val('日期', '')).strip()
+            if not r_topic and not r_date:
+                continue
+
+            # --- 日期格式自動標準化 ---
             try:
-                std_date = pd.to_datetime(raw_date).strftime('%Y-%m-%d')
+                std_date = pd.to_datetime(r_date).strftime('%Y-%m-%d')
             except:
-                std_date = raw_date
+                std_date = r_date # 維持原樣 (可能是空字串)
 
             m7 = {
                 'reach': safe_num(get_val('7天觸及', 0)),
@@ -125,7 +131,7 @@ def load_data():
                 'id': str(get_val('ID')) if get_val('ID') else str(uuid.uuid4()),
                 'date': std_date,
                 'platform': str(get_val('平台', 'Facebook')),
-                'topic': str(get_val('主題', '')),
+                'topic': r_topic,
                 'postType': str(get_val('類型', '')),
                 'postSubType': str(get_val('子類型', '')),
                 'postPurpose': str(get_val('目的', '')),
@@ -150,6 +156,10 @@ def save_data(data):
         
         flat_data = []
         for p in data:
+            # 🔥 修正重點 2: 再次過濾，確保不寫入空資料
+            if not p.get('topic') and not p.get('date'):
+                continue
+
             m7 = p.get('metrics7d', {})
             m1 = p.get('metrics1m', {})
             flat_data.append({
@@ -186,8 +196,16 @@ def save_data(data):
                 if c not in df.columns: df[c] = ""
             
             df = df[chinese_cols_order]
+            df = df.fillna("") 
             
             sheet.clear()
+            
+            # 🔥 修正重點 3: 強制 Resize 為「資料量 + 1 (標題) + 1 (緩衝)」，不留多餘空白列
+            try:
+                sheet.resize(rows=len(df)+2, cols=len(chinese_cols_order)) 
+            except:
+                pass
+
             update_data = [df.columns.values.tolist()] + df.values.tolist()
             sheet.update(update_data)
         else:
@@ -214,7 +232,10 @@ def get_performance_label(platform, metrics, fmt, standards):
     if is_metrics_disabled(platform, fmt): return "🚫 不計", "gray", "此形式/平台不需計算成效"
     reach = safe_num(metrics.get('reach', 0))
     if reach == 0: return "-", "gray", "尚未填寫數據"
+    
+    # 🔥 自動計算互動 (按讚+留言+分享)
     eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
+    
     rate = (eng / reach) * 100
     std = standards.get(platform, {})
     if not std: return "-", "gray", "未設定標準"
@@ -620,7 +641,6 @@ with tab1:
 
             today_s = datetime.now().strftime("%Y-%m-%d")
 
-            # 👇 這裡的迴圈加了 idx，並更新了 button key
             for idx, p in enumerate(processed_data):
                 label, color, tooltip = get_performance_label(p['platform'], p.get('metrics7d'), p['postFormat'], st.session_state.standards)
                 is_today = (p['date'] == today_s)
@@ -656,7 +676,6 @@ with tab1:
                     else: c[8].markdown(p['rate30_str'], unsafe_allow_html=True)
                     
                     c[9].write(p['postOwner'])
-                    # 👇 這裡的 key 加上了 _{idx}
                     if c[10].button("✏️", key=f"ed_{p['id']}_{idx}", on_click=edit_post_callback, args=(p,)): pass
                     if c[11].button("🗑️", key=f"del_{p['id']}_{idx}", on_click=delete_post_callback, args=(p['id'],)): pass
 
