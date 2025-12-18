@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ⚠️ 請填入你的 Google Sheet 網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1Nvqid5fHkcrkOJE322Xqv_R_7kU4krc9q8us3iswRGc/edit?gid=0#gid=0" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/你的ID/edit" 
 STANDARDS_FILE = "social_standards.json"
 
 # Google API Scope
@@ -102,17 +102,22 @@ def load_data():
             def get_val(cn_key, default=""):
                 return row.get(cn_key, default)
 
-            # 🔥 修正重點 1: 如果「主題」跟「日期」都是空的，直接跳過 (防止讀入空白列)
+            # --- 🔥 修正 1: 強力過濾空白列 ---
             r_topic = str(get_val('主題', '')).strip()
             r_date = str(get_val('日期', '')).strip()
+            # 如果主題和日期都是空的，視為無效資料，直接跳過
             if not r_topic and not r_date:
                 continue
+
+            # --- 🔥 修正 2: ID 強制修剪空白 (解決比對失敗問題) ---
+            raw_id = str(get_val('ID')).strip()
+            final_id = raw_id if raw_id else str(uuid.uuid4())
 
             # --- 日期格式自動標準化 ---
             try:
                 std_date = pd.to_datetime(r_date).strftime('%Y-%m-%d')
             except:
-                std_date = r_date # 維持原樣 (可能是空字串)
+                std_date = r_date
 
             m7 = {
                 'reach': safe_num(get_val('7天觸及', 0)),
@@ -128,7 +133,7 @@ def load_data():
             }
             
             post = {
-                'id': str(get_val('ID')) if get_val('ID') else str(uuid.uuid4()),
+                'id': final_id,
                 'date': std_date,
                 'platform': str(get_val('平台', 'Facebook')),
                 'topic': r_topic,
@@ -156,14 +161,13 @@ def save_data(data):
         
         flat_data = []
         for p in data:
-            # 🔥 修正重點 2: 再次過濾，確保不寫入空資料
-            if not p.get('topic') and not p.get('date'):
-                continue
+            # 再次過濾空資料
+            if not p.get('topic') and not p.get('date'): continue
 
             m7 = p.get('metrics7d', {})
             m1 = p.get('metrics1m', {})
             flat_data.append({
-                'id': p.get('id'),
+                'id': str(p.get('id')).strip(), # 存檔時也確保 ID 乾淨
                 'date': p.get('date'),
                 'platform': p.get('platform'),
                 'topic': p.get('topic'),
@@ -200,9 +204,9 @@ def save_data(data):
             
             sheet.clear()
             
-            # 🔥 修正重點 3: 強制 Resize 為「資料量 + 1 (標題) + 1 (緩衝)」，不留多餘空白列
+            # 🔥 強制調整 Sheet 大小，只留 1 列緩衝，避免產生過多空白列
             try:
-                sheet.resize(rows=len(df)+5, cols=len(chinese_cols_order)) 
+                sheet.resize(rows=len(df)+2, cols=len(chinese_cols_order)) 
             except:
                 pass
 
@@ -233,7 +237,6 @@ def get_performance_label(platform, metrics, fmt, standards):
     reach = safe_num(metrics.get('reach', 0))
     if reach == 0: return "-", "gray", "尚未填寫數據"
     
-    # 🔥 自動計算互動 (按讚+留言+分享)
     eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
     
     rate = (eng / reach) * 100
@@ -442,9 +445,12 @@ with tab1:
                 elif 'type' in k: st.session_state[k] = MAIN_POST_TYPES[0]
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
                 elif 'format' in k: st.session_state[k] = POST_FORMATS[0]
+                
+                # 👇 初始化時也預設為空白 (使用 PROJECT_OWNERS[0] 也就是 "")
                 elif 'po' in k: st.session_state[k] = PROJECT_OWNERS[0]
                 elif 'owner' in k: st.session_state[k] = POST_OWNERS[0]
                 elif 'designer' in k: st.session_state[k] = DESIGNERS[0]
+                
                 elif 'subtype' in k: st.session_state[k] = "-- 無 --"
                 else: st.session_state[k] = ""
         
@@ -517,11 +523,22 @@ with tab1:
                 if is_edit:
                     p = selected_platforms[0]
                     base = {'date': date_str, 'topic': f_topic, 'postType': f_type, 'postSubType': f_subtype if f_subtype != "-- 無 --" else "", 'postPurpose': platform_purposes[p], 'postFormat': f_format, 'projectOwner': f_po, 'postOwner': f_owner, 'designer': f_designer, 'status': 'published', 'metrics7d': metrics_input['metrics7d'], 'metrics1m': metrics_input['metrics1m']}
+                    
+                    # 🔥 強力比對 ID，確保不會跑到 else 變成新增
+                    found = False
                     for i, d in enumerate(st.session_state.posts):
-                        if d['id'] == target_edit_id: st.session_state.posts[i] = {**d, **base, 'platform': p}; break
-                    st.session_state.editing_post = None
-                    st.session_state.target_scroll_id = target_edit_id
-                    st.success("已更新！")
+                        # 比對時一律轉字串並去空白
+                        if str(d['id']).strip() == str(target_edit_id).strip():
+                            st.session_state.posts[i] = {**d, **base, 'platform': p}
+                            found = True
+                            break
+                    
+                    if not found:
+                        st.error("❌ 找不到原始資料 ID，無法更新 (可能該筆資料已被刪除)")
+                    else:
+                        st.session_state.editing_post = None
+                        st.session_state.target_scroll_id = target_edit_id
+                        st.success("已更新！")
                 else:
                     for p in selected_platforms:
                         new_id = str(uuid.uuid4())
