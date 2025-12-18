@@ -387,7 +387,7 @@ with st.sidebar:
         st.warning("請謹慎操作，動作會直接影響 Google Sheet！")
         
         # 1. 修復標題
-        if st.button("🔨 重置試算表標題 (中文)"):
+        if st.button("🔨 重置試算表"):
             try:
                 client = get_client()
                 if client:
