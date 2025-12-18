@@ -11,7 +11,6 @@ import streamlit.components.v1 as components
 from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 1. 配置與常數 ---
-# 這是最重要的設定，必須放在第一行
 st.set_page_config(
     page_title="2025社群排程與成效",
     page_icon="📅",
@@ -58,7 +57,7 @@ SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
 
-# 👇 修改：在最前面加入空字串 "" 以產生空白選項
+# 選項 (含空白)
 PROJECT_OWNERS = ['', '夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
 POST_OWNERS = ['一千', '楷曜', '可榆']
 DESIGNERS = ['', '千惟', '靖嬙']
@@ -103,13 +102,11 @@ def load_data():
             def get_val(cn_key, default=""):
                 return row.get(cn_key, default)
 
-            # --- 🔥 日期格式自動標準化 ---
             raw_date = str(get_val('日期', ''))
             try:
                 std_date = pd.to_datetime(raw_date).strftime('%Y-%m-%d')
             except:
                 std_date = raw_date
-            # ---------------------------
 
             m7 = {
                 'reach': safe_num(get_val('7天觸及', 0)),
@@ -217,10 +214,7 @@ def get_performance_label(platform, metrics, fmt, standards):
     if is_metrics_disabled(platform, fmt): return "🚫 不計", "gray", "此形式/平台不需計算成效"
     reach = safe_num(metrics.get('reach', 0))
     if reach == 0: return "-", "gray", "尚未填寫數據"
-    
-    # 🔥 自動計算互動 (按讚+留言+分享)
     eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
-    
     rate = (eng / reach) * 100
     std = standards.get(platform, {})
     if not std: return "-", "gray", "未設定標準"
@@ -257,14 +251,8 @@ def get_performance_label(platform, metrics, fmt, standards):
 
 def process_post_metrics(p):
     m7 = p.get('metrics7d', {}); m30 = p.get('metrics1m', {})
-    
-    # 🔥 自動計算互動 (按讚+留言+分享)
-    r7 = safe_num(m7.get('reach', 0))
-    e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
-    
-    r30 = safe_num(m30.get('reach', 0))
-    e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
-    
+    r7 = safe_num(m7.get('reach', 0)); e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
+    r30 = safe_num(m30.get('reach', 0)); e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
     rate7_val = (e7 / r7 * 100) if r7 > 0 else 0; rate30_val = (e30 / r30 * 100) if r30 > 0 else 0
     disabled = is_metrics_disabled(p.get('platform'), p.get('postFormat')); is_threads = p.get('platform') == 'Threads'
     rate7_str = "-"; rate30_str = "-"
@@ -291,7 +279,6 @@ def edit_post_callback(post):
     st.session_state['entry_purpose'] = post['postPurpose'] if post['postPurpose'] in POST_PURPOSES else POST_PURPOSES[0]
     st.session_state['entry_format'] = post['postFormat'] if post['postFormat'] in POST_FORMATS else POST_FORMATS[0]
     
-    # 👇 使用 PROJECT_OWNERS[0] (也就是空字串) 作為預設值
     st.session_state['entry_po'] = post['projectOwner'] if post['projectOwner'] in PROJECT_OWNERS else PROJECT_OWNERS[0]
     st.session_state['entry_owner'] = post['postOwner'] if post['postOwner'] in POST_OWNERS else POST_OWNERS[0]
     st.session_state['entry_designer'] = post['designer'] if post['designer'] in DESIGNERS else DESIGNERS[0]
@@ -387,7 +374,7 @@ with st.sidebar:
         st.warning("請謹慎操作，動作會直接影響 Google Sheet！")
         
         # 1. 修復標題
-        if st.button("🔨 重置試算表"):
+        if st.button("🔨 重置試算表標題 (中文)"):
             try:
                 client = get_client()
                 if client:
@@ -397,7 +384,7 @@ with st.sidebar:
                     st.success("已重置標題為 (7天按讚)！")
             except Exception as e: st.error(f"失敗: {e}")
             
-        st.write("") # 空行分隔
+        st.write("")
 
         # 2. 清空資料
         if st.button("🧨 確認清空所有資料", type="primary"):
@@ -434,12 +421,9 @@ with tab1:
                 elif 'type' in k: st.session_state[k] = MAIN_POST_TYPES[0]
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
                 elif 'format' in k: st.session_state[k] = POST_FORMATS[0]
-                
-                # 👇 初始化時也預設為空白 (使用 PROJECT_OWNERS[0] 也就是 "")
                 elif 'po' in k: st.session_state[k] = PROJECT_OWNERS[0]
                 elif 'owner' in k: st.session_state[k] = POST_OWNERS[0]
                 elif 'designer' in k: st.session_state[k] = DESIGNERS[0]
-                
                 elif 'subtype' in k: st.session_state[k] = "-- 無 --"
                 else: st.session_state[k] = ""
         
@@ -591,7 +575,6 @@ with tab1:
                             st.markdown(f"<div class='cal-day-cell' style='{bg}'><div class='cal-day-num'>{day}</div></div>", unsafe_allow_html=True)
                             day_p = [p for p in filtered_posts if p['date'] == date_s]
                             
-                            # 👇 修正 enumerate 迴圈 & Key 確保唯一
                             for idx, p in enumerate(day_p):
                                 show_bell = False
                                 if not is_metrics_disabled(p['platform'], p['postFormat']):
@@ -603,7 +586,6 @@ with tab1:
                                 bell = "🔔" if show_bell else ""
                                 label = f"{mark} {bell}{p['topic'][:4]}.."
                                 
-                                # 👇 Key 值加上 date 和 index，徹底解決 ID 重複導致的當機
                                 if st.button(label, key=f"cal_{p['id']}_{date_s}_{idx}", help=f"{p['platform']} - {p['topic']}", on_click=go_to_post_from_calendar, args=(p['id'],)): pass
     
     # --- List View ---
@@ -638,7 +620,8 @@ with tab1:
 
             today_s = datetime.now().strftime("%Y-%m-%d")
 
-            for p in processed_data:
+            # 👇 這裡的迴圈加了 idx，並更新了 button key
+            for idx, p in enumerate(processed_data):
                 label, color, tooltip = get_performance_label(p['platform'], p.get('metrics7d'), p['postFormat'], st.session_state.standards)
                 is_today = (p['date'] == today_s)
                 is_target = (st.session_state.target_scroll_id == p['id'])
@@ -673,8 +656,9 @@ with tab1:
                     else: c[8].markdown(p['rate30_str'], unsafe_allow_html=True)
                     
                     c[9].write(p['postOwner'])
-                    if c[10].button("✏️", key=f"ed_{p['id']}", on_click=edit_post_callback, args=(p,)): pass
-                    if c[11].button("🗑️", key=f"del_{p['id']}", on_click=delete_post_callback, args=(p['id'],)): pass
+                    # 👇 這裡的 key 加上了 _{idx}
+                    if c[10].button("✏️", key=f"ed_{p['id']}_{idx}", on_click=edit_post_callback, args=(p,)): pass
+                    if c[11].button("🗑️", key=f"del_{p['id']}_{idx}", on_click=delete_post_callback, args=(p['id'],)): pass
 
                     exp_label = "📉 詳細數據"
                     if p['platform'] == 'Threads' and (p['bell7'] or p['bell30']): exp_label += " :red[🔔 缺資料]"
