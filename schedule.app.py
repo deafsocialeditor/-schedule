@@ -202,7 +202,7 @@ def save_data(data):
             
             # 🔥 修正重點 3: 強制 Resize 為「資料量 + 1 (標題) + 1 (緩衝)」，不留多餘空白列
             try:
-                sheet.resize(rows=len(df)+2, cols=len(chinese_cols_order)) 
+                sheet.resize(rows=len(df)+5, cols=len(chinese_cols_order)) 
             except:
                 pass
 
