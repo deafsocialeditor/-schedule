@@ -19,13 +19,13 @@ st.set_page_config(
 )
 
 # ⚠️ 請填入你的 Google Sheet 網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1Nvqid5fHkcrkOJE322Xqv_R_7kU4krc9q8us3iswRGc/edit?gid=0#gid=0" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/你的ID/edit" 
 STANDARDS_FILE = "social_standards.json"
 
 # Google API Scope
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 
-# --- 核心設定：Google Sheet 中文欄位對照表 (新增互動欄位) ---
+# --- 核心設定：Google Sheet 中文欄位對照表 ---
 COL_MAP = {
     'id': 'ID',
     'date': '日期',
@@ -44,12 +44,12 @@ COL_MAP = {
     'metrics7d_likes': '7天按讚',
     'metrics7d_comments': '7天留言',
     'metrics7d_shares': '7天分享',
-    'metrics7d_eng': '7天互動',      # 🔥 新增欄位
+    'metrics7d_eng': '7天互動',      # 🔥 這是總和欄位
     'metrics1m_reach': '30天觸及',
     'metrics1m_likes': '30天按讚',
     'metrics1m_comments': '30天留言',
     'metrics1m_shares': '30天分享',
-    'metrics1m_eng': '30天互動'      # 🔥 新增欄位
+    'metrics1m_eng': '30天互動'      # 🔥 這是總和欄位
 }
 
 # 選項定義
@@ -117,15 +117,24 @@ def load_data():
             try: std_date = pd.to_datetime(r_date).strftime('%Y-%m-%d')
             except: std_date = r_date
 
+            # --- 🔥 聰明讀取邏輯 (相容舊欄位名稱) ---
+            # 7天
+            v_likes_7 = safe_num(get_val('7天按讚', ''))
+            if v_likes_7 == 0: v_likes_7 = safe_num(get_val('7天互動', 0)) # 如果抓不到按讚，試試抓舊的互動欄位
+            
+            # 30天
+            v_likes_30 = safe_num(get_val('30天按讚', ''))
+            if v_likes_30 == 0: v_likes_30 = safe_num(get_val('30天互動', 0))
+
             m7 = {
                 'reach': safe_num(get_val('7天觸及', 0)),
-                'likes': safe_num(get_val('7天按讚', 0)),
+                'likes': v_likes_7,
                 'comments': safe_num(get_val('7天留言', 0)),
                 'shares': safe_num(get_val('7天分享', 0))
             }
             m1 = {
                 'reach': safe_num(get_val('30天觸及', 0)),
-                'likes': safe_num(get_val('30天按讚', 0)),
+                'likes': v_likes_30,
                 'comments': safe_num(get_val('30天留言', 0)),
                 'shares': safe_num(get_val('30天分享', 0))
             }
@@ -199,7 +208,7 @@ def save_data(data):
             df = pd.DataFrame(flat_data)
             df = df.rename(columns=COL_MAP)
             
-            # 🔥 定義最新的欄位順序 (包含互動)
+            # 🔥 定義欄位順序 (包含互動)
             chinese_cols_order = [
                 'ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', 
                 '專案負責人', '貼文負責人', '美編', '狀態',
@@ -400,12 +409,12 @@ with st.sidebar:
     
     st.divider()
     
-    # --- 🔥 危險區域 (更新版) ---
+    # --- 🔥 危險區域 (整合版) ---
     with st.expander("⚠️ 管理員專區 (危險操作)"):
         st.warning("請謹慎操作，動作會直接影響 Google Sheet！")
         
         # 1. 修復標題
-        if st.button("🔨 重置標題"):
+        if st.button("🔨 重置試算表標題 (中文)"):
             try:
                 client = get_client()
                 if client:
@@ -419,7 +428,7 @@ with st.sidebar:
         st.write("")
 
         # 2. 強制回寫數據 (新功能)
-        if st.button("🔄 回寫數據"):
+        if st.button("🔄 強制回寫所有成效數據"):
             save_data(st.session_state.posts)
             st.success("已將所有資料的「互動數」重新計算並寫回 Google Sheet！")
 
@@ -428,6 +437,7 @@ with st.sidebar:
         # 3. 清空資料
         if st.button("🧨 確認清空所有資料", type="primary"):
             st.session_state.posts = []; save_data([]); st.success("資料已清空！"); st.rerun()
+
 # --- 6. Main Page ---
 st.header("📅 2025社群排程與成效")
 tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
@@ -459,9 +469,12 @@ with tab1:
                 elif 'type' in k: st.session_state[k] = MAIN_POST_TYPES[0]
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
                 elif 'format' in k: st.session_state[k] = POST_FORMATS[0]
+                
+                # 👇 初始化時也預設為空白 (使用 PROJECT_OWNERS[0] 也就是 "")
                 elif 'po' in k: st.session_state[k] = PROJECT_OWNERS[0]
                 elif 'owner' in k: st.session_state[k] = POST_OWNERS[0]
                 elif 'designer' in k: st.session_state[k] = DESIGNERS[0]
+                
                 elif 'subtype' in k: st.session_state[k] = "-- 無 --"
                 else: st.session_state[k] = ""
         
