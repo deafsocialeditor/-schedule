@@ -44,12 +44,12 @@ COL_MAP = {
     'metrics7d_likes': '7天按讚',
     'metrics7d_comments': '7天留言',
     'metrics7d_shares': '7天分享',
-    'metrics7d_eng': '7天互動',      # 🔥 這是總和欄位
+    'metrics7d_eng': '7天互動',
     'metrics1m_reach': '30天觸及',
     'metrics1m_likes': '30天按讚',
     'metrics1m_comments': '30天留言',
     'metrics1m_shares': '30天分享',
-    'metrics1m_eng': '30天互動'      # 🔥 這是總和欄位
+    'metrics1m_eng': '30天互動'
 }
 
 # 選項定義
@@ -117,12 +117,10 @@ def load_data():
             try: std_date = pd.to_datetime(r_date).strftime('%Y-%m-%d')
             except: std_date = r_date
 
-            # --- 🔥 聰明讀取邏輯 (相容舊欄位名稱) ---
-            # 7天
+            # 聰明讀取邏輯
             v_likes_7 = safe_num(get_val('7天按讚', ''))
-            if v_likes_7 == 0: v_likes_7 = safe_num(get_val('7天互動', 0)) # 如果抓不到按讚，試試抓舊的互動欄位
+            if v_likes_7 == 0: v_likes_7 = safe_num(get_val('7天互動', 0))
             
-            # 30天
             v_likes_30 = safe_num(get_val('30天按讚', ''))
             if v_likes_30 == 0: v_likes_30 = safe_num(get_val('30天互動', 0))
 
@@ -173,7 +171,7 @@ def save_data(data):
             m7 = p.get('metrics7d', {})
             m1 = p.get('metrics1m', {})
             
-            # 🔥 自動計算互動總數 (寫入 Excel 用)
+            # 自動計算互動總數
             eng7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
             eng30 = safe_num(m1.get('likes', 0)) + safe_num(m1.get('comments', 0)) + safe_num(m1.get('shares', 0))
 
@@ -195,20 +193,19 @@ def save_data(data):
                 'metrics7d_likes': m7.get('likes', 0),
                 'metrics7d_comments': m7.get('comments', 0), 
                 'metrics7d_shares': m7.get('shares', 0),
-                'metrics7d_eng': eng7, # 🔥 寫入 7天互動
+                'metrics7d_eng': eng7,
                 
                 'metrics1m_reach': m1.get('reach', 0), 
                 'metrics1m_likes': m1.get('likes', 0),
                 'metrics1m_comments': m1.get('comments', 0), 
                 'metrics1m_shares': m1.get('shares', 0),
-                'metrics1m_eng': eng30 # 🔥 寫入 30天互動
+                'metrics1m_eng': eng30
             })
 
         if flat_data:
             df = pd.DataFrame(flat_data)
             df = df.rename(columns=COL_MAP)
             
-            # 🔥 定義欄位順序 (包含互動)
             chinese_cols_order = [
                 'ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', 
                 '專案負責人', '貼文負責人', '美編', '狀態',
@@ -293,6 +290,7 @@ def process_post_metrics(p):
     m7 = p.get('metrics7d', {}); m30 = p.get('metrics1m', {})
     r7 = safe_num(m7.get('reach', 0)); e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
     r30 = safe_num(m30.get('reach', 0)); e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
+    
     rate7_val = (e7 / r7 * 100) if r7 > 0 else 0; rate30_val = (e30 / r30 * 100) if r30 > 0 else 0
     disabled = is_metrics_disabled(p.get('platform'), p.get('postFormat')); is_threads = p.get('platform') == 'Threads'
     rate7_str = "-"; rate30_str = "-"
@@ -301,11 +299,17 @@ def process_post_metrics(p):
     today = datetime.now().date()
     try: p_date = datetime.strptime(p.get('date', ''), "%Y-%m-%d").date()
     except: p_date = today
+    
+    # 🔥 顯示星期幾
+    weekdays_tw = ["(一)", "(二)", "(三)", "(四)", "(五)", "(六)", "(日)"]
+    wd = weekdays_tw[p_date.weekday()]
+    date_display = f"{p.get('date', '')} {wd}"
+
     bell7 = False; bell30 = False
     if not disabled: 
         if today >= (p_date + timedelta(days=7)) and r7 == 0: bell7 = True
         if today >= (p_date + timedelta(days=30)) and r30 == 0: bell30 = True
-    return {**p, 'r7': int(r7), 'e7': int(e7), 'rate7_val': rate7_val, 'rate7_str': rate7_str, 'bell7': bell7, 'r30': int(r30), 'e30': int(e30), 'rate30_val': rate30_val, 'rate30_str': rate30_str, 'bell30': bell30, '_sort_date': p.get('date', str(today))}
+    return {**p, 'r7': int(r7), 'e7': int(e7), 'rate7_val': rate7_val, 'rate7_str': rate7_str, 'bell7': bell7, 'r30': int(r30), 'e30': int(e30), 'rate30_val': rate30_val, 'rate30_str': rate30_str, 'bell30': bell30, '_sort_date': p.get('date', str(today)), 'date_display': date_display}
 
 def edit_post_callback(post):
     st.session_state.editing_post = post; st.session_state.scroll_to_top = True
@@ -318,11 +322,9 @@ def edit_post_callback(post):
     sub = post.get('postSubType', ''); st.session_state['entry_subtype'] = sub if sub in SOUVENIR_SUB_TYPES else "-- 無 --"
     st.session_state['entry_purpose'] = post['postPurpose'] if post['postPurpose'] in POST_PURPOSES else POST_PURPOSES[0]
     st.session_state['entry_format'] = post['postFormat'] if post['postFormat'] in POST_FORMATS else POST_FORMATS[0]
-    
     st.session_state['entry_po'] = post['projectOwner'] if post['projectOwner'] in PROJECT_OWNERS else PROJECT_OWNERS[0]
     st.session_state['entry_owner'] = post['postOwner'] if post['postOwner'] in POST_OWNERS else POST_OWNERS[0]
     st.session_state['entry_designer'] = post['designer'] if post['designer'] in DESIGNERS else DESIGNERS[0]
-    
     m7 = post.get('metrics7d', {}); st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0)); st.session_state['entry_m7_likes'] = safe_num(m7.get('likes', 0)); st.session_state['entry_m7_comments'] = safe_num(m7.get('comments', 0)); st.session_state['entry_m7_shares'] = safe_num(m7.get('shares', 0))
     m1 = post.get('metrics1m', {}); st.session_state['entry_m1_reach'] = safe_num(m1.get('reach', 0)); st.session_state['entry_m1_likes'] = safe_num(m1.get('likes', 0)); st.session_state['entry_m1_comments'] = safe_num(m1.get('comments', 0)); st.session_state['entry_m1_shares'] = safe_num(m1.get('shares', 0))
 
@@ -379,7 +381,7 @@ st.markdown(f"""
 
 # --- 5. Sidebar ---
 with st.sidebar:
-    if st.button("🔄 強制同步雲端資料"):
+    if st.button("🔄 同步雲端資料"):
         st.session_state.posts = load_data()
         st.success("已更新！")
         st.rerun()
@@ -409,17 +411,16 @@ with st.sidebar:
     
     st.divider()
     
-    # --- 🔥 危險區域 (整合版) ---
-    with st.expander("⚠️ 管理員專區 (危險操作)"):
+    # --- 🔥 危險區域 (簡潔版) ---
+    with st.expander("⚠️ 管理員專區"):
         st.warning("請謹慎操作，動作會直接影響 Google Sheet！")
         
         # 1. 修復標題
-        if st.button("🔨 重置試算表標題 (中文)"):
+        if st.button("🔨 重置標題 (中文)"):
             try:
                 client = get_client()
                 if client:
                     sheet = client.open_by_url(SHEET_URL).sheet1
-                    # 🔥 更新欄位順序，包含互動
                     chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天按讚', '7天留言', '7天分享', '7天互動', '30天觸及', '30天按讚', '30天留言', '30天分享', '30天互動']
                     sheet.clear(); sheet.append_row(chinese_cols_order)
                     st.success("已重置標題 (含互動欄位)！")
@@ -427,14 +428,7 @@ with st.sidebar:
             
         st.write("")
 
-        # 2. 強制回寫數據 (新功能)
-        if st.button("🔄 強制回寫所有成效數據"):
-            save_data(st.session_state.posts)
-            st.success("已將所有資料的「互動數」重新計算並寫回 Google Sheet！")
-
-        st.write("")
-
-        # 3. 清空資料
+        # 2. 清空資料
         if st.button("🧨 確認清空所有資料", type="primary"):
             st.session_state.posts = []; save_data([]); st.success("資料已清空！"); st.rerun()
 
@@ -693,7 +687,7 @@ with tab1:
                     # 12 Cols - FIXED
                     c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
-                    c[0].markdown(f"<span class='row-text-lg'>{p['date']}</span>", unsafe_allow_html=True)
+                    c[0].markdown(f"<span class='row-text-lg'>{p['date_display']}</span>", unsafe_allow_html=True)
                     pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
                     c[1].markdown(f"<span class='platform-badge-box' style='background-color:{pf_clr}'>{p['platform']}</span>", unsafe_allow_html=True)
                     c[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
