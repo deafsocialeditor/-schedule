@@ -25,7 +25,7 @@ STANDARDS_FILE = "social_standards.json"
 # Google API Scope
 SCOPE = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
 
-# --- 核心設定：Google Sheet 中文欄位對照表 ---
+# --- 核心設定：Google Sheet 中文欄位對照表 (新增互動欄位) ---
 COL_MAP = {
     'id': 'ID',
     'date': '日期',
@@ -39,15 +39,17 @@ COL_MAP = {
     'postOwner': '貼文負責人',
     'designer': '美編',
     'status': '狀態',
-    # 成效數據 (Input)
+    # 成效數據
     'metrics7d_reach': '7天觸及',
     'metrics7d_likes': '7天按讚',
     'metrics7d_comments': '7天留言',
     'metrics7d_shares': '7天分享',
+    'metrics7d_eng': '7天互動',      # 🔥 新增欄位
     'metrics1m_reach': '30天觸及',
     'metrics1m_likes': '30天按讚',
     'metrics1m_comments': '30天留言',
-    'metrics1m_shares': '30天分享'
+    'metrics1m_shares': '30天分享',
+    'metrics1m_eng': '30天互動'      # 🔥 新增欄位
 }
 
 # 選項定義
@@ -102,22 +104,18 @@ def load_data():
             def get_val(cn_key, default=""):
                 return row.get(cn_key, default)
 
-            # --- 🔥 修正 1: 強力過濾空白列 ---
+            # 強力過濾空白列
             r_topic = str(get_val('主題', '')).strip()
             r_date = str(get_val('日期', '')).strip()
-            # 如果主題和日期都是空的，視為無效資料，直接跳過
-            if not r_topic and not r_date:
-                continue
+            if not r_topic and not r_date: continue
 
-            # --- 🔥 修正 2: ID 強制修剪空白 (解決比對失敗問題) ---
+            # ID 清理
             raw_id = str(get_val('ID')).strip()
             final_id = raw_id if raw_id else str(uuid.uuid4())
 
-            # --- 日期格式自動標準化 ---
-            try:
-                std_date = pd.to_datetime(r_date).strftime('%Y-%m-%d')
-            except:
-                std_date = r_date
+            # 日期標準化
+            try: std_date = pd.to_datetime(r_date).strftime('%Y-%m-%d')
+            except: std_date = r_date
 
             m7 = {
                 'reach': safe_num(get_val('7天觸及', 0)),
@@ -161,13 +159,17 @@ def save_data(data):
         
         flat_data = []
         for p in data:
-            # 再次過濾空資料
             if not p.get('topic') and not p.get('date'): continue
 
             m7 = p.get('metrics7d', {})
             m1 = p.get('metrics1m', {})
+            
+            # 🔥 自動計算互動總數 (寫入 Excel 用)
+            eng7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
+            eng30 = safe_num(m1.get('likes', 0)) + safe_num(m1.get('comments', 0)) + safe_num(m1.get('shares', 0))
+
             flat_data.append({
-                'id': str(p.get('id')).strip(), # 存檔時也確保 ID 乾淨
+                'id': str(p.get('id')).strip(),
                 'date': p.get('date'),
                 'platform': p.get('platform'),
                 'topic': p.get('topic'),
@@ -179,21 +181,30 @@ def save_data(data):
                 'postOwner': p.get('postOwner'),
                 'designer': p.get('designer'),
                 'status': p.get('status', 'published'),
-                'metrics7d_reach': m7.get('reach', 0), 'metrics7d_likes': m7.get('likes', 0),
-                'metrics7d_comments': m7.get('comments', 0), 'metrics7d_shares': m7.get('shares', 0),
-                'metrics1m_reach': m1.get('reach', 0), 'metrics1m_likes': m1.get('likes', 0),
-                'metrics1m_comments': m1.get('comments', 0), 'metrics1m_shares': m1.get('shares', 0)
+                
+                'metrics7d_reach': m7.get('reach', 0), 
+                'metrics7d_likes': m7.get('likes', 0),
+                'metrics7d_comments': m7.get('comments', 0), 
+                'metrics7d_shares': m7.get('shares', 0),
+                'metrics7d_eng': eng7, # 🔥 寫入 7天互動
+                
+                'metrics1m_reach': m1.get('reach', 0), 
+                'metrics1m_likes': m1.get('likes', 0),
+                'metrics1m_comments': m1.get('comments', 0), 
+                'metrics1m_shares': m1.get('shares', 0),
+                'metrics1m_eng': eng30 # 🔥 寫入 30天互動
             })
 
         if flat_data:
             df = pd.DataFrame(flat_data)
             df = df.rename(columns=COL_MAP)
             
+            # 🔥 定義最新的欄位順序 (包含互動)
             chinese_cols_order = [
                 'ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', 
                 '專案負責人', '貼文負責人', '美編', '狀態',
-                '7天觸及', '7天按讚', '7天留言', '7天分享',
-                '30天觸及', '30天按讚', '30天留言', '30天分享'
+                '7天觸及', '7天按讚', '7天留言', '7天分享', '7天互動',
+                '30天觸及', '30天按讚', '30天留言', '30天分享', '30天互動'
             ]
             
             for c in chinese_cols_order:
@@ -203,12 +214,8 @@ def save_data(data):
             df = df.fillna("") 
             
             sheet.clear()
-            
-            # 🔥 強制調整 Sheet 大小，只留 1 列緩衝，避免產生過多空白列
-            try:
-                sheet.resize(rows=len(df)+2, cols=len(chinese_cols_order)) 
-            except:
-                pass
+            try: sheet.resize(rows=len(df)+2, cols=len(chinese_cols_order)) 
+            except: pass
 
             update_data = [df.columns.values.tolist()] + df.values.tolist()
             sheet.update(update_data)
@@ -393,27 +400,34 @@ with st.sidebar:
     
     st.divider()
     
-    # --- 🔥 危險區域 (整合版) ---
+    # --- 🔥 危險區域 (更新版) ---
     with st.expander("⚠️ 管理員專區 (危險操作)"):
         st.warning("請謹慎操作，動作會直接影響 Google Sheet！")
         
         # 1. 修復標題
-        if st.button("🔨 重置試算表標題 (中文)"):
+        if st.button("🔨 重置標題"):
             try:
                 client = get_client()
                 if client:
                     sheet = client.open_by_url(SHEET_URL).sheet1
-                    chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天按讚', '7天留言', '7天分享', '30天觸及', '30天按讚', '30天留言', '30天分享']
+                    # 🔥 更新欄位順序，包含互動
+                    chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天按讚', '7天留言', '7天分享', '7天互動', '30天觸及', '30天按讚', '30天留言', '30天分享', '30天互動']
                     sheet.clear(); sheet.append_row(chinese_cols_order)
-                    st.success("已重置標題為 (7天按讚)！")
+                    st.success("已重置標題 (含互動欄位)！")
             except Exception as e: st.error(f"失敗: {e}")
             
         st.write("")
 
-        # 2. 清空資料
+        # 2. 強制回寫數據 (新功能)
+        if st.button("🔄 回寫數據"):
+            save_data(st.session_state.posts)
+            st.success("已將所有資料的「互動數」重新計算並寫回 Google Sheet！")
+
+        st.write("")
+
+        # 3. 清空資料
         if st.button("🧨 確認清空所有資料", type="primary"):
             st.session_state.posts = []; save_data([]); st.success("資料已清空！"); st.rerun()
-
 # --- 6. Main Page ---
 st.header("📅 2025社群排程與成效")
 tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
@@ -445,12 +459,9 @@ with tab1:
                 elif 'type' in k: st.session_state[k] = MAIN_POST_TYPES[0]
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
                 elif 'format' in k: st.session_state[k] = POST_FORMATS[0]
-                
-                # 👇 初始化時也預設為空白 (使用 PROJECT_OWNERS[0] 也就是 "")
                 elif 'po' in k: st.session_state[k] = PROJECT_OWNERS[0]
                 elif 'owner' in k: st.session_state[k] = POST_OWNERS[0]
                 elif 'designer' in k: st.session_state[k] = DESIGNERS[0]
-                
                 elif 'subtype' in k: st.session_state[k] = "-- 無 --"
                 else: st.session_state[k] = ""
         
@@ -524,17 +535,15 @@ with tab1:
                     p = selected_platforms[0]
                     base = {'date': date_str, 'topic': f_topic, 'postType': f_type, 'postSubType': f_subtype if f_subtype != "-- 無 --" else "", 'postPurpose': platform_purposes[p], 'postFormat': f_format, 'projectOwner': f_po, 'postOwner': f_owner, 'designer': f_designer, 'status': 'published', 'metrics7d': metrics_input['metrics7d'], 'metrics1m': metrics_input['metrics1m']}
                     
-                    # 🔥 強力比對 ID，確保不會跑到 else 變成新增
                     found = False
                     for i, d in enumerate(st.session_state.posts):
-                        # 比對時一律轉字串並去空白
                         if str(d['id']).strip() == str(target_edit_id).strip():
                             st.session_state.posts[i] = {**d, **base, 'platform': p}
                             found = True
                             break
                     
                     if not found:
-                        st.error("❌ 找不到原始資料 ID，無法更新 (可能該筆資料已被刪除)")
+                        st.error("❌ 找不到原始資料 ID，無法更新")
                     else:
                         st.session_state.editing_post = None
                         st.session_state.target_scroll_id = target_edit_id
