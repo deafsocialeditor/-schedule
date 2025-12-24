@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ⚠️ 請填入你的 Google Sheet 網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/1Nvqid5fHkcrkOJE322Xqv_R_7kU4krc9q8us3iswRGc/edit?gid=0#gid=0" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/你的ID/edit" 
 STANDARDS_FILE = "social_standards.json"
 
 # Google API Scope
@@ -44,12 +44,12 @@ COL_MAP = {
     'metrics7d_likes': '7天按讚',
     'metrics7d_comments': '7天留言',
     'metrics7d_shares': '7天分享',
-    'metrics7d_eng': '7天互動',
+    'metrics7d_eng': '7天互動',      # 自動計算
     'metrics1m_reach': '30天觸及',
     'metrics1m_likes': '30天按讚',
     'metrics1m_comments': '30天留言',
     'metrics1m_shares': '30天分享',
-    'metrics1m_eng': '30天互動'
+    'metrics1m_eng': '30天互動'      # 自動計算
 }
 
 # 選項定義
@@ -117,12 +117,14 @@ def load_data():
             try: std_date = pd.to_datetime(r_date).strftime('%Y-%m-%d')
             except: std_date = r_date
 
-            # 聰明讀取邏輯
+            # 讀取邏輯
             v_likes_7 = safe_num(get_val('7天按讚', ''))
-            if v_likes_7 == 0: v_likes_7 = safe_num(get_val('7天互動', 0))
+            # 若按讚欄位是0，且舊互動欄位有值，可能是舊資料格式，嘗試相容
+            if v_likes_7 == 0 and safe_num(get_val('7天互動', 0)) > 0:
+                 # 這裡不做過多猜測，維持讀取到的按讚數，因為我們會強制回寫正確的互動數
+                 pass 
             
             v_likes_30 = safe_num(get_val('30天按讚', ''))
-            if v_likes_30 == 0: v_likes_30 = safe_num(get_val('30天互動', 0))
 
             m7 = {
                 'reach': safe_num(get_val('7天觸及', 0)),
@@ -171,7 +173,7 @@ def save_data(data):
             m7 = p.get('metrics7d', {})
             m1 = p.get('metrics1m', {})
             
-            # 自動計算互動總數
+            # 🔥 自動計算互動總數
             eng7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
             eng30 = safe_num(m1.get('likes', 0)) + safe_num(m1.get('comments', 0)) + safe_num(m1.get('shares', 0))
 
@@ -193,24 +195,25 @@ def save_data(data):
                 'metrics7d_likes': m7.get('likes', 0),
                 'metrics7d_comments': m7.get('comments', 0), 
                 'metrics7d_shares': m7.get('shares', 0),
-                'metrics7d_eng': eng7,
+                'metrics7d_eng': eng7, # 自動寫入計算結果
                 
                 'metrics1m_reach': m1.get('reach', 0), 
                 'metrics1m_likes': m1.get('likes', 0),
                 'metrics1m_comments': m1.get('comments', 0), 
                 'metrics1m_shares': m1.get('shares', 0),
-                'metrics1m_eng': eng30
+                'metrics1m_eng': eng30 # 自動寫入計算結果
             })
 
         if flat_data:
             df = pd.DataFrame(flat_data)
             df = df.rename(columns=COL_MAP)
             
+            # 🔥 調整這裡的順序：觸及 -> 互動 -> 讚 -> 留言 -> 分享
             chinese_cols_order = [
                 'ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', 
                 '專案負責人', '貼文負責人', '美編', '狀態',
-                '7天觸及', '7天按讚', '7天留言', '7天分享', '7天互動',
-                '30天觸及', '30天按讚', '30天留言', '30天分享', '30天互動'
+                '7天觸及', '7天互動', '7天按讚', '7天留言', '7天分享', 
+                '30天觸及', '30天互動', '30天按讚', '30天留言', '30天分享'
             ]
             
             for c in chinese_cols_order:
@@ -288,6 +291,7 @@ def get_performance_label(platform, metrics, fmt, standards):
 
 def process_post_metrics(p):
     m7 = p.get('metrics7d', {}); m30 = p.get('metrics1m', {})
+    
     r7 = safe_num(m7.get('reach', 0)); e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
     r30 = safe_num(m30.get('reach', 0)); e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
     
@@ -300,7 +304,7 @@ def process_post_metrics(p):
     try: p_date = datetime.strptime(p.get('date', ''), "%Y-%m-%d").date()
     except: p_date = today
     
-    # 🔥 顯示星期幾
+    # 顯示星期幾
     weekdays_tw = ["(一)", "(二)", "(三)", "(四)", "(五)", "(六)", "(日)"]
     wd = weekdays_tw[p_date.weekday()]
     date_display = f"{p.get('date', '')} {wd}"
@@ -381,7 +385,7 @@ st.markdown(f"""
 
 # --- 5. Sidebar ---
 with st.sidebar:
-    if st.button("🔄 同步雲端資料"):
+    if st.button("🔄 強制同步雲端資料"):
         st.session_state.posts = load_data()
         st.success("已更新！")
         st.rerun()
@@ -411,24 +415,32 @@ with st.sidebar:
     
     st.divider()
     
-    # --- 🔥 危險區域 (簡潔版) ---
-    with st.expander("⚠️ 管理員專區"):
+    # --- 🔥 危險區域 (整合版) ---
+    with st.expander("⚠️ 管理員專區 (危險操作)"):
         st.warning("請謹慎操作，動作會直接影響 Google Sheet！")
         
         # 1. 修復標題
-        if st.button("🔨 重置標題 (中文)"):
+        if st.button("🔨 重置試算表標題 (中文)"):
             try:
                 client = get_client()
                 if client:
                     sheet = client.open_by_url(SHEET_URL).sheet1
-                    chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天按讚', '7天留言', '7天分享', '7天互動', '30天觸及', '30天按讚', '30天留言', '30天分享', '30天互動']
+                    # 🔥 更新欄位順序 (互動在前)
+                    chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天互動', '7天按讚', '7天留言', '7天分享', '30天觸及', '30天互動', '30天按讚', '30天留言', '30天分享']
                     sheet.clear(); sheet.append_row(chinese_cols_order)
-                    st.success("已重置標題 (含互動欄位)！")
+                    st.success("已重置標題 (觸及->互動->細項)！")
             except Exception as e: st.error(f"失敗: {e}")
             
         st.write("")
 
-        # 2. 清空資料
+        # 2. 強制回寫數據
+        if st.button("🔄 強制回寫所有成效數據"):
+            save_data(st.session_state.posts)
+            st.success("已將所有資料的「互動數」重新計算並寫回 Google Sheet！")
+
+        st.write("")
+
+        # 3. 清空資料
         if st.button("🧨 確認清空所有資料", type="primary"):
             st.session_state.posts = []; save_data([]); st.success("資料已清空！"); st.rerun()
 
@@ -464,7 +476,6 @@ with tab1:
                 elif 'purpose' in k: st.session_state[k] = POST_PURPOSES[0]
                 elif 'format' in k: st.session_state[k] = POST_FORMATS[0]
                 
-                # 👇 初始化時也預設為空白 (使用 PROJECT_OWNERS[0] 也就是 "")
                 elif 'po' in k: st.session_state[k] = PROJECT_OWNERS[0]
                 elif 'owner' in k: st.session_state[k] = POST_OWNERS[0]
                 elif 'designer' in k: st.session_state[k] = DESIGNERS[0]
@@ -687,7 +698,7 @@ with tab1:
                     # 12 Cols - FIXED
                     c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
-                    c[0].markdown(f"<span class='row-text-lg'>{p['date_display']}</span>", unsafe_allow_html=True)
+                    c[0].markdown(f"<span class='row-text-lg'>{p['date_display']}</span>", unsafe_allow_html=True) # 🔥 顯示星期幾
                     pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
                     c[1].markdown(f"<span class='platform-badge-box' style='background-color:{pf_clr}'>{p['platform']}</span>", unsafe_allow_html=True)
                     c[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
