@@ -19,7 +19,7 @@ st.set_page_config(
 )
 
 # ⚠️ 請填入你的 Google Sheet 網址
-SHEET_URL = "https://docs.google.com/spreadsheets/d/你的ID/edit" 
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1Nvqid5fHkcrkOJE322Xqv_R_7kU4krc9q8us3iswRGc/edit?gid=0#gid=0" 
 STANDARDS_FILE = "social_standards.json"
 
 # Google API Scope
