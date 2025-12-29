@@ -445,7 +445,7 @@ with st.sidebar:
             st.session_state.posts = []; save_data([]); st.success("資料已清空！"); st.rerun()
 
 # --- 6. Main Page ---
-st.header("📅 2025社群排程與成效")
+st.header("📅 社群排程與成效")
 tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1 ===
