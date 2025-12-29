@@ -12,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="2025社群排程與成效",
+    page_title="社群排程與成效",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -67,7 +67,7 @@ DESIGNERS = ['', '千惟', '靖嬙']
 # 樣式設定
 ICONS = {'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵', '社團': '👥'}
 PLATFORM_COLORS = {'Facebook': '#1877F2', 'Instagram': '#E1306C', 'LINE@': '#06C755', 'YouTube': '#FF0000', 'Threads': '#101010', '社團': '#F97316'}
-PLATFORM_MARKS = {'Facebook': '🟦', 'Instagram': '🟪', 'LINE@': '🟩', 'YouTube': '🟥', 'Threads': '⬛', '社團': '🟧'}
+PLATFORM_MARKS = {'Facebook': '🟦', 'Instagram': '🟥', 'LINE@': '🟩', 'YouTube': '🟨', 'Threads': '⬛', '社團': '🟧'}
 
 # --- 2. Google Sheets 連線與資料處理 ---
 
