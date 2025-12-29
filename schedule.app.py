@@ -12,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效", # 🔥 修改標題
+    page_title="社群排程與成效",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -64,28 +64,10 @@ PROJECT_OWNERS = ['', '夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', 
 POST_OWNERS = ['一千', '楷曜', '可榆']
 DESIGNERS = ['', '千惟', '靖嬙']
 
-# --- 🔥 樣式設定 (顏色更新) ---
+# 樣式設定
 ICONS = {'Facebook': '📘', 'Instagram': '📸', 'LINE@': '🟢', 'YouTube': '▶️', 'Threads': '🧵', '社團': '👥'}
-
-# 這裡設定標籤底色 (Hex Code)
-PLATFORM_COLORS = {
-    'Facebook': '#1877F2',  # 藍
-    'Instagram': '#E1306C', # 紅 (IG 品牌紅)
-    'LINE@': '#06C755',     # 綠
-    'YouTube': '#F59E0B',   # 黃 (選用深黃色，確保白字可讀)
-    'Threads': '#000000',   # 黑
-    '社團': '#F97316'       # 橘
-}
-
-# 這裡設定日曆上的符號
-PLATFORM_MARKS = {
-    'Facebook': '🟦', 
-    'Instagram': '🟥', # 改紅
-    'LINE@': '🟩', 
-    'YouTube': '🟨',   # 改黃
-    'Threads': '⬛', 
-    '社團': '🟧'
-}
+PLATFORM_COLORS = {'Facebook': '#1877F2', 'Instagram': '#E1306C', 'LINE@': '#06C755', 'YouTube': '#F59E0B', 'Threads': '#000000', '社團': '#F97316'}
+PLATFORM_MARKS = {'Facebook': '🟦', 'Instagram': '🟥', 'LINE@': '🟩', 'YouTube': '🟨', 'Threads': '⬛', '社團': '🟧'}
 
 # --- 2. Google Sheets 連線與資料處理 ---
 
@@ -122,20 +104,16 @@ def load_data():
             def get_val(cn_key, default=""):
                 return row.get(cn_key, default)
 
-            # 強力過濾空白列
             r_topic = str(get_val('主題', '')).strip()
             r_date = str(get_val('日期', '')).strip()
             if not r_topic and not r_date: continue
 
-            # ID 清理
             raw_id = str(get_val('ID')).strip()
             final_id = raw_id if raw_id else str(uuid.uuid4())
 
-            # 日期標準化
             try: std_date = pd.to_datetime(r_date).strftime('%Y-%m-%d')
             except: std_date = r_date
 
-            # 聰明讀取邏輯
             v_likes_7 = safe_num(get_val('7天按讚', ''))
             if v_likes_7 == 0: v_likes_7 = safe_num(get_val('7天互動', 0))
             
@@ -189,7 +167,6 @@ def save_data(data):
             m7 = p.get('metrics7d', {})
             m1 = p.get('metrics1m', {})
             
-            # 自動計算互動總數
             eng7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
             eng30 = safe_num(m1.get('likes', 0)) + safe_num(m1.get('comments', 0)) + safe_num(m1.get('shares', 0))
 
@@ -306,10 +283,8 @@ def get_performance_label(platform, metrics, fmt, standards):
 
 def process_post_metrics(p):
     m7 = p.get('metrics7d', {}); m30 = p.get('metrics1m', {})
-    
     r7 = safe_num(m7.get('reach', 0)); e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
     r30 = safe_num(m30.get('reach', 0)); e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
-    
     rate7_val = (e7 / r7 * 100) if r7 > 0 else 0; rate30_val = (e30 / r30 * 100) if r30 > 0 else 0
     disabled = is_metrics_disabled(p.get('platform'), p.get('postFormat')); is_threads = p.get('platform') == 'Threads'
     rate7_str = "-"; rate30_str = "-"
@@ -418,25 +393,14 @@ with st.sidebar:
     
     st.divider()
     date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True, key='date_filter_type')
-    
     if date_filter_type == "月":
-        # 1. 取得所有資料的日期
         dates = [p['date'] for p in st.session_state.posts] if st.session_state.posts else []
-        
-        # 2. 強制加入「今天」的日期，確保選單裡一定有「當月」
         today = datetime.now()
         today_ym = today.strftime("%Y-%m")
-        dates.append(today.strftime("%Y-%m-%d")) # 放入暫存清單，不影響實際資料庫
-
-        # 3. 整理出所有月份選項 (由新到舊排序)
+        dates.append(today.strftime("%Y-%m-%d")) # 確保當月存在
         months = sorted(list(set([d[:7] for d in dates if len(d) >= 7])), reverse=True)
-        
-        # 4. 找出「當月」在選單中的位置，設為預設值
-        try:
-            default_ix = months.index(today_ym)
-        except ValueError:
-            default_ix = 0 # 如果真的找不到 (理論上不會發生)，就選最新的
-
+        try: default_ix = months.index(today_ym)
+        except ValueError: default_ix = 0
         selected_month = st.selectbox("選擇月份", months, index=default_ix, key='selected_month')
     else:
         c1, c2 = st.columns(2)
@@ -475,7 +439,7 @@ with st.sidebar:
             st.session_state.posts = []; save_data([]); st.success("資料已清空！"); st.rerun()
 
 # --- 6. Main Page ---
-st.header("📅 社群排程與成效") # 🔥 修正標題
+st.header("📅 社群排程與成效")
 tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1 ===
@@ -728,7 +692,7 @@ with tab1:
                     # 12 Cols - FIXED
                     c = st.columns([0.8, 0.7, 1.8, 0.7, 0.6, 0.6, 0.6, 0.6, 0.6, 0.4, 0.4, 0.4])
                     
-                    c[0].markdown(f"<span class='row-text-lg'>{p['date_display']}</span>", unsafe_allow_html=True)
+                    c[0].markdown(f"<span class='row-text-lg'>{p['date_display']}</span>", unsafe_allow_html=True) # 🔥 顯示星期幾
                     pf_clr = PLATFORM_COLORS.get(p['platform'], '#888')
                     c[1].markdown(f"<span class='platform-badge-box' style='background-color:{pf_clr}'>{p['platform']}</span>", unsafe_allow_html=True)
                     c[2].markdown(f"<span class='row-text-lg'>{p['topic']}</span>", unsafe_allow_html=True)
