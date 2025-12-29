@@ -418,11 +418,26 @@ with st.sidebar:
     
     st.divider()
     date_filter_type = st.radio("日期模式", ["月", "自訂範圍"], horizontal=True, key='date_filter_type')
+    
     if date_filter_type == "月":
-        dates = [p['date'] for p in st.session_state.posts] if st.session_state.posts else [datetime.now().strftime("%Y-%m-%d")]
+        # 1. 取得所有資料的日期
+        dates = [p['date'] for p in st.session_state.posts] if st.session_state.posts else []
+        
+        # 2. 強制加入「今天」的日期，確保選單裡一定有「當月」
+        today = datetime.now()
+        today_ym = today.strftime("%Y-%m")
+        dates.append(today.strftime("%Y-%m-%d")) # 放入暫存清單，不影響實際資料庫
+
+        # 3. 整理出所有月份選項 (由新到舊排序)
         months = sorted(list(set([d[:7] for d in dates if len(d) >= 7])), reverse=True)
-        if not months: months = [datetime.now().strftime("%Y-%m")]
-        selected_month = st.selectbox("選擇月份", months, key='selected_month')
+        
+        # 4. 找出「當月」在選單中的位置，設為預設值
+        try:
+            default_ix = months.index(today_ym)
+        except ValueError:
+            default_ix = 0 # 如果真的找不到 (理論上不會發生)，就選最新的
+
+        selected_month = st.selectbox("選擇月份", months, index=default_ix, key='selected_month')
     else:
         c1, c2 = st.columns(2)
         start_date = c1.date_input("開始", datetime.now().replace(day=1), key='start_date')
