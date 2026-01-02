@@ -12,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效",
+    page_title="社群排程與成效", # 🔥 確認這裡已修改
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -171,7 +171,7 @@ def save_data(data):
             m7 = p.get('metrics7d', {})
             m1 = p.get('metrics1m', {})
             
-            # 自動計算互動總數
+            # 🔥 自動計算互動總數
             eng7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
             eng30 = safe_num(m1.get('likes', 0)) + safe_num(m1.get('comments', 0)) + safe_num(m1.get('shares', 0))
 
@@ -193,19 +193,20 @@ def save_data(data):
                 'metrics7d_likes': m7.get('likes', 0),
                 'metrics7d_comments': m7.get('comments', 0), 
                 'metrics7d_shares': m7.get('shares', 0),
-                'metrics7d_eng': eng7,
+                'metrics7d_eng': eng7, # 寫入計算結果
                 
                 'metrics1m_reach': m1.get('reach', 0), 
                 'metrics1m_likes': m1.get('likes', 0),
                 'metrics1m_comments': m1.get('comments', 0), 
                 'metrics1m_shares': m1.get('shares', 0),
-                'metrics1m_eng': eng30
+                'metrics1m_eng': eng30 # 寫入計算結果
             })
 
         if flat_data:
             df = pd.DataFrame(flat_data)
             df = df.rename(columns=COL_MAP)
             
+            # 🔥 Google Sheet 欄位順序 (確認有包含互動)
             chinese_cols_order = [
                 'ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', 
                 '專案負責人', '貼文負責人', '美編', '狀態',
@@ -382,6 +383,7 @@ st.markdown(f"""
 
 # --- 5. Sidebar ---
 with st.sidebar:
+    # 🔥 確認按鈕名稱已修正
     if st.button("🔄 同步雲端"):
         st.session_state.posts = load_data()
         st.success("已更新！")
@@ -417,11 +419,11 @@ with st.sidebar:
     
     st.divider()
     
-    # --- 🔥 危險區域 (整合版) ---
+    # --- 🔥 危險區域 (確認按鈕名稱已修正) ---
     with st.expander("⚠️ 管理員專區 (危險操作)"):
         st.warning("請謹慎操作，動作會直接影響 Google Sheet！")
         
-        if st.button("🔨 重置標題"): # 修正錯字
+        if st.button("🔨 重置標題"): # 修正為「重置標題」
             try:
                 client = get_client()
                 if client:
@@ -433,7 +435,7 @@ with st.sidebar:
             
         st.write("")
 
-        if st.button("🔄 回寫成效"):
+        if st.button("🔄 回寫成效"): # 修正為「回寫成效」
             save_data(st.session_state.posts)
             st.success("已將所有資料的「互動數」重新計算並寫回 Google Sheet！")
 
@@ -443,7 +445,7 @@ with st.sidebar:
             st.session_state.posts = []; save_data([]); st.success("資料已清空！"); st.rerun()
 
 # --- 6. Main Page ---
-st.header("📅 社群排程與成效")
+st.header("📅 社群排程與成效") # 🔥 確認標題已修正
 tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1 ===
@@ -706,14 +708,12 @@ with tab1:
                     c[5].write(p['postFormat'])
                     c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
-                    # 🔥 7天 (🔔)
                     if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[7].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
                          c[7].markdown(p['rate7_str'], unsafe_allow_html=True) 
                     else: c[7].markdown(p['rate7_str'], unsafe_allow_html=True)
 
-                    # 🔥 30天 (⏰)
                     if p['bell30'] and p['platform'] != 'Threads': c[8].markdown(f"<span class='overdue-alert'>⏰ 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[8].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
@@ -730,7 +730,6 @@ with tab1:
                     with st.expander(exp_label):
                         rl = "瀏覽" if p['platform'] == 'Threads' else "觸及"
                         dc = st.columns(4)
-                        # 🔥 詳細數據區也顯示小圖示
                         w7 = "🔔 " if (p['bell7'] and p['platform'] == 'Threads') else ""
                         w30 = "⏰ " if (p['bell30'] and p['platform'] == 'Threads') else ""
                         dc[0].metric(f"{w7}7天-{rl}", f"{p['r7']:,}")
