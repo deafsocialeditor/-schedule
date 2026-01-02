@@ -12,7 +12,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 
 # --- 1. 配置與常數 ---
 st.set_page_config(
-    page_title="社群排程與成效", # 🔥 確認這裡已修改
+    page_title="社群排程與成效",
     page_icon="📅",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -44,11 +44,14 @@ COL_MAP = {
     'metrics7d_likes': '7天按讚',
     'metrics7d_comments': '7天留言',
     'metrics7d_shares': '7天分享',
+    'metrics7d_saves': '7天收藏',    # 🔥 新增欄位
     'metrics7d_eng': '7天互動',
+    
     'metrics1m_reach': '30天觸及',
     'metrics1m_likes': '30天按讚',
     'metrics1m_comments': '30天留言',
     'metrics1m_shares': '30天分享',
+    'metrics1m_saves': '30天收藏',   # 🔥 新增欄位
     'metrics1m_eng': '30天互動'
 }
 
@@ -104,20 +107,16 @@ def load_data():
             def get_val(cn_key, default=""):
                 return row.get(cn_key, default)
 
-            # 強力過濾空白列
             r_topic = str(get_val('主題', '')).strip()
             r_date = str(get_val('日期', '')).strip()
             if not r_topic and not r_date: continue
 
-            # ID 清理
             raw_id = str(get_val('ID')).strip()
             final_id = raw_id if raw_id else str(uuid.uuid4())
 
-            # 日期標準化
             try: std_date = pd.to_datetime(r_date).strftime('%Y-%m-%d')
             except: std_date = r_date
 
-            # 聰明讀取邏輯
             v_likes_7 = safe_num(get_val('7天按讚', ''))
             if v_likes_7 == 0: v_likes_7 = safe_num(get_val('7天互動', 0))
             
@@ -128,13 +127,15 @@ def load_data():
                 'reach': safe_num(get_val('7天觸及', 0)),
                 'likes': v_likes_7,
                 'comments': safe_num(get_val('7天留言', 0)),
-                'shares': safe_num(get_val('7天分享', 0))
+                'shares': safe_num(get_val('7天分享', 0)),
+                'saves': safe_num(get_val('7天收藏', 0)) # 🔥 讀取收藏
             }
             m1 = {
                 'reach': safe_num(get_val('30天觸及', 0)),
                 'likes': v_likes_30,
                 'comments': safe_num(get_val('30天留言', 0)),
-                'shares': safe_num(get_val('30天分享', 0))
+                'shares': safe_num(get_val('30天分享', 0)),
+                'saves': safe_num(get_val('30天收藏', 0)) # 🔥 讀取收藏
             }
             
             post = {
@@ -171,9 +172,9 @@ def save_data(data):
             m7 = p.get('metrics7d', {})
             m1 = p.get('metrics1m', {})
             
-            # 🔥 自動計算互動總數
-            eng7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
-            eng30 = safe_num(m1.get('likes', 0)) + safe_num(m1.get('comments', 0)) + safe_num(m1.get('shares', 0))
+            # 🔥 自動計算互動總數 (讚+留言+分享+收藏)
+            eng7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0)) + safe_num(m7.get('saves', 0))
+            eng30 = safe_num(m1.get('likes', 0)) + safe_num(m1.get('comments', 0)) + safe_num(m1.get('shares', 0)) + safe_num(m1.get('saves', 0))
 
             flat_data.append({
                 'id': str(p.get('id')).strip(),
@@ -193,25 +194,27 @@ def save_data(data):
                 'metrics7d_likes': m7.get('likes', 0),
                 'metrics7d_comments': m7.get('comments', 0), 
                 'metrics7d_shares': m7.get('shares', 0),
-                'metrics7d_eng': eng7, # 寫入計算結果
+                'metrics7d_saves': m7.get('saves', 0), # 🔥 寫入收藏
+                'metrics7d_eng': eng7,
                 
                 'metrics1m_reach': m1.get('reach', 0), 
                 'metrics1m_likes': m1.get('likes', 0),
                 'metrics1m_comments': m1.get('comments', 0), 
                 'metrics1m_shares': m1.get('shares', 0),
-                'metrics1m_eng': eng30 # 寫入計算結果
+                'metrics1m_saves': m1.get('saves', 0), # 🔥 寫入收藏
+                'metrics1m_eng': eng30
             })
 
         if flat_data:
             df = pd.DataFrame(flat_data)
             df = df.rename(columns=COL_MAP)
             
-            # 🔥 Google Sheet 欄位順序 (確認有包含互動)
+            # 🔥 欄位順序：觸及 -> 互動 -> 讚 -> 留言 -> 分享 -> 收藏
             chinese_cols_order = [
                 'ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', 
                 '專案負責人', '貼文負責人', '美編', '狀態',
-                '7天觸及', '7天互動', '7天按讚', '7天留言', '7天分享', 
-                '30天觸及', '30天互動', '30天按讚', '30天留言', '30天分享'
+                '7天觸及', '7天互動', '7天按讚', '7天留言', '7天分享', '7天收藏', 
+                '30天觸及', '30天互動', '30天按讚', '30天留言', '30天分享', '30天收藏'
             ]
             
             for c in chinese_cols_order:
@@ -251,7 +254,8 @@ def get_performance_label(platform, metrics, fmt, standards):
     reach = safe_num(metrics.get('reach', 0))
     if reach == 0: return "-", "gray", "尚未填寫數據"
     
-    eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0))
+    # 🔥 互動計算包含收藏
+    eng = safe_num(metrics.get('likes', 0)) + safe_num(metrics.get('comments', 0)) + safe_num(metrics.get('shares', 0)) + safe_num(metrics.get('saves', 0))
     
     rate = (eng / reach) * 100
     std = standards.get(platform, {})
@@ -290,8 +294,9 @@ def get_performance_label(platform, metrics, fmt, standards):
 def process_post_metrics(p):
     m7 = p.get('metrics7d', {}); m30 = p.get('metrics1m', {})
     
-    r7 = safe_num(m7.get('reach', 0)); e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0))
-    r30 = safe_num(m30.get('reach', 0)); e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0))
+    # 🔥 互動計算包含收藏
+    r7 = safe_num(m7.get('reach', 0)); e7 = safe_num(m7.get('likes', 0)) + safe_num(m7.get('comments', 0)) + safe_num(m7.get('shares', 0)) + safe_num(m7.get('saves', 0))
+    r30 = safe_num(m30.get('reach', 0)); e30 = safe_num(m30.get('likes', 0)) + safe_num(m30.get('comments', 0)) + safe_num(m30.get('shares', 0)) + safe_num(m30.get('saves', 0))
     
     rate7_val = (e7 / r7 * 100) if r7 > 0 else 0; rate30_val = (e30 / r30 * 100) if r30 > 0 else 0
     disabled = is_metrics_disabled(p.get('platform'), p.get('postFormat')); is_threads = p.get('platform') == 'Threads'
@@ -302,11 +307,11 @@ def process_post_metrics(p):
     try: p_date = datetime.strptime(p.get('date', ''), "%Y-%m-%d").date()
     except: p_date = today
     
-    # 顯示星期幾
     weekdays_tw = ["(一)", "(二)", "(三)", "(四)", "(五)", "(六)", "(日)"]
     wd = weekdays_tw[p_date.weekday()]
     date_display = f"{p.get('date', '')} {wd}"
 
+    # 🔥 警示邏輯: 7天=🔔, 30天=⏰
     bell7 = False; bell30 = False
     if not disabled: 
         if today >= (p_date + timedelta(days=7)) and r7 == 0: bell7 = True
@@ -327,8 +332,20 @@ def edit_post_callback(post):
     st.session_state['entry_po'] = post['projectOwner'] if post['projectOwner'] in PROJECT_OWNERS else PROJECT_OWNERS[0]
     st.session_state['entry_owner'] = post['postOwner'] if post['postOwner'] in POST_OWNERS else POST_OWNERS[0]
     st.session_state['entry_designer'] = post['designer'] if post['designer'] in DESIGNERS else DESIGNERS[0]
-    m7 = post.get('metrics7d', {}); st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0)); st.session_state['entry_m7_likes'] = safe_num(m7.get('likes', 0)); st.session_state['entry_m7_comments'] = safe_num(m7.get('comments', 0)); st.session_state['entry_m7_shares'] = safe_num(m7.get('shares', 0))
-    m1 = post.get('metrics1m', {}); st.session_state['entry_m1_reach'] = safe_num(m1.get('reach', 0)); st.session_state['entry_m1_likes'] = safe_num(m1.get('likes', 0)); st.session_state['entry_m1_comments'] = safe_num(m1.get('comments', 0)); st.session_state['entry_m1_shares'] = safe_num(m1.get('shares', 0))
+    
+    m7 = post.get('metrics7d', {})
+    st.session_state['entry_m7_reach'] = safe_num(m7.get('reach', 0))
+    st.session_state['entry_m7_likes'] = safe_num(m7.get('likes', 0))
+    st.session_state['entry_m7_comments'] = safe_num(m7.get('comments', 0))
+    st.session_state['entry_m7_shares'] = safe_num(m7.get('shares', 0))
+    st.session_state['entry_m7_saves'] = safe_num(m7.get('saves', 0)) # 🔥 讀取收藏
+
+    m1 = post.get('metrics1m', {})
+    st.session_state['entry_m1_reach'] = safe_num(m1.get('reach', 0))
+    st.session_state['entry_m1_likes'] = safe_num(m1.get('likes', 0))
+    st.session_state['entry_m1_comments'] = safe_num(m1.get('comments', 0))
+    st.session_state['entry_m1_shares'] = safe_num(m1.get('shares', 0))
+    st.session_state['entry_m1_saves'] = safe_num(m1.get('saves', 0)) # 🔥 讀取收藏
 
 def delete_post_callback(post_id):
     st.session_state.posts = [item for item in st.session_state.posts if item['id'] != post_id]
@@ -383,7 +400,6 @@ st.markdown(f"""
 
 # --- 5. Sidebar ---
 with st.sidebar:
-    # 🔥 確認按鈕名稱已修正
     if st.button("🔄 同步雲端"):
         st.session_state.posts = load_data()
         st.success("已更新！")
@@ -419,23 +435,24 @@ with st.sidebar:
     
     st.divider()
     
-    # --- 🔥 危險區域 (確認按鈕名稱已修正) ---
+    # --- 🔥 危險區域 (按鈕名稱修正) ---
     with st.expander("⚠️ 管理員專區 (危險操作)"):
         st.warning("請謹慎操作，動作會直接影響 Google Sheet！")
         
-        if st.button("🔨 重置標題"): # 修正為「重置標題」
+        if st.button("🔨 重製標題"): # 修正：重製標題
             try:
                 client = get_client()
                 if client:
                     sheet = client.open_by_url(SHEET_URL).sheet1
-                    chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天互動', '7天按讚', '7天留言', '7天分享', '30天觸及', '30天互動', '30天按讚', '30天留言', '30天分享']
+                    # 🔥 欄位包含「收藏」
+                    chinese_cols_order = ['ID', '日期', '平台', '主題', '類型', '子類型', '目的', '形式', '專案負責人', '貼文負責人', '美編', '狀態', '7天觸及', '7天互動', '7天按讚', '7天留言', '7天分享', '7天收藏', '30天觸及', '30天互動', '30天按讚', '30天留言', '30天分享', '30天收藏']
                     sheet.clear(); sheet.append_row(chinese_cols_order)
-                    st.success("已重置標題 (含互動欄位)！")
+                    st.success("已重置標題 (含收藏欄位)！")
             except Exception as e: st.error(f"失敗: {e}")
             
         st.write("")
 
-        if st.button("🔄 回寫成效"): # 修正為「回寫成效」
+        if st.button("🔄 回寫成效"): # 修正：回寫成效
             save_data(st.session_state.posts)
             st.success("已將所有資料的「互動數」重新計算並寫回 Google Sheet！")
 
@@ -445,7 +462,7 @@ with st.sidebar:
             st.session_state.posts = []; save_data([]); st.success("資料已清空！"); st.rerun()
 
 # --- 6. Main Page ---
-st.header("📅 社群排程與成效") # 🔥 確認標題已修正
+st.header("📅 社群排程與成效")
 tab1, tab2 = st.tabs(["🗓️ 排程管理", "📊 數據分析"])
 
 # === TAB 1 ===
@@ -481,7 +498,7 @@ with tab1:
                 elif 'subtype' in k: st.session_state[k] = "-- 無 --"
                 else: st.session_state[k] = ""
         
-        for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares', 'entry_m1_reach', 'entry_m1_likes', 'entry_m1_comments', 'entry_m1_shares']:
+        for k in ['entry_m7_reach', 'entry_m7_likes', 'entry_m7_comments', 'entry_m7_shares', 'entry_m7_saves', 'entry_m1_reach', 'entry_m1_likes', 'entry_m1_comments', 'entry_m1_shares', 'entry_m1_saves']:
              if k not in st.session_state: st.session_state[k] = 0.0
 
         c1, c2, c3 = st.columns([1, 2, 1])
@@ -522,22 +539,27 @@ with tab1:
         metrics_input = {'metrics7d': {}, 'metrics1m': {}}
         
         if not hide_metrics:
-            st.caption("數據填寫")
+            st.caption("數據填寫 (互動 = 讚 + 留言 + 分享 + 收藏)")
             m_cols = st.columns(2)
             with m_cols[0]:
                 st.markdown("##### 🔥 7天成效")
                 metrics_input['metrics7d']['reach'] = st.number_input("7天-觸及", step=1, key="entry_m7_reach")
-                metrics_input['metrics7d']['likes'] = st.number_input("7天-按讚", step=1, key="entry_m7_likes")
-                sub_c1, sub_c2 = st.columns(2)
-                metrics_input['metrics7d']['comments'] = sub_c1.number_input("7天-留言", step=1, key="entry_m7_comments")
-                metrics_input['metrics7d']['shares'] = sub_c2.number_input("7天-分享", step=1, key="entry_m7_shares")
+                c_lk, c_cm = st.columns(2)
+                metrics_input['metrics7d']['likes'] = c_lk.number_input("7天-按讚", step=1, key="entry_m7_likes")
+                metrics_input['metrics7d']['comments'] = c_cm.number_input("7天-留言", step=1, key="entry_m7_comments")
+                c_sh, c_sv = st.columns(2)
+                metrics_input['metrics7d']['shares'] = c_sh.number_input("7天-分享", step=1, key="entry_m7_shares")
+                metrics_input['metrics7d']['saves'] = c_sv.number_input("7天-收藏", step=1, key="entry_m7_saves") # 🔥 新增收藏
+                
             with m_cols[1]:
-                st.markdown("##### 🌳 一個月成效")
+                st.markdown("##### 🌳 30天成效")
                 metrics_input['metrics1m']['reach'] = st.number_input("1月-觸及", step=1, key="entry_m1_reach")
-                metrics_input['metrics1m']['likes'] = st.number_input("1月-按讚", step=1, key="entry_m1_likes")
-                sub_c3, sub_c4 = st.columns(2)
-                metrics_input['metrics1m']['comments'] = sub_c3.number_input("1月-留言", step=1, key="entry_m1_comments")
-                metrics_input['metrics1m']['shares'] = sub_c4.number_input("1月-分享", step=1, key="entry_m1_shares")
+                c_lk2, c_cm2 = st.columns(2)
+                metrics_input['metrics1m']['likes'] = c_lk2.number_input("1月-按讚", step=1, key="entry_m1_likes")
+                metrics_input['metrics1m']['comments'] = c_cm2.number_input("1月-留言", step=1, key="entry_m1_comments")
+                c_sh2, c_sv2 = st.columns(2)
+                metrics_input['metrics1m']['shares'] = c_sh2.number_input("1月-分享", step=1, key="entry_m1_shares")
+                metrics_input['metrics1m']['saves'] = c_sv2.number_input("1月-收藏", step=1, key="entry_m1_saves") # 🔥 新增收藏
         else:
             st.info(f"ℹ️ {current_platform} / {f_format} 不需要填寫成效數據")
 
@@ -708,12 +730,14 @@ with tab1:
                     c[5].write(p['postFormat'])
                     c[6].markdown(f"<span class='kpi-badge {color}' title='{tooltip}'>{label.split(' ')[-1] if ' ' in label else label}</span>", unsafe_allow_html=True)
                     
+                    # 🔥 7天 (🔔)
                     if p['bell7'] and p['platform'] != 'Threads': c[7].markdown(f"<span class='overdue-alert'>🔔 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[7].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
                          c[7].markdown(p['rate7_str'], unsafe_allow_html=True) 
                     else: c[7].markdown(p['rate7_str'], unsafe_allow_html=True)
 
+                    # 🔥 30天 (⏰)
                     if p['bell30'] and p['platform'] != 'Threads': c[8].markdown(f"<span class='overdue-alert'>⏰ 缺</span>", unsafe_allow_html=True)
                     elif p['platform'] == 'YouTube': c[8].markdown("-", unsafe_allow_html=True)
                     elif is_metrics_disabled(p['platform'], p['postFormat']) or p['platform'] == 'Threads':
@@ -730,6 +754,7 @@ with tab1:
                     with st.expander(exp_label):
                         rl = "瀏覽" if p['platform'] == 'Threads' else "觸及"
                         dc = st.columns(4)
+                        # 🔥 詳細數據區也顯示小圖示
                         w7 = "🔔 " if (p['bell7'] and p['platform'] == 'Threads') else ""
                         w30 = "⏰ " if (p['bell30'] and p['platform'] == 'Threads') else ""
                         dc[0].metric(f"{w7}7天-{rl}", f"{p['r7']:,}")
