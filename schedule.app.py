@@ -58,13 +58,13 @@ COL_MAP = {
 # 選項定義
 PLATFORMS = ['Facebook', 'Instagram', 'LINE@', 'YouTube', 'Threads', '社團']
 MAIN_POST_TYPES = ['喜餅', '彌月', '伴手禮', '社群互動', '圓夢計畫', '公告']
-SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週']
+SOUVENIR_SUB_TYPES = ['端午節', '中秋', '聖誕', '新春', '蒙友週', '週年慶']
 POST_PURPOSES = ['互動', '廣告', '門市廣告', '導購', '公告']
 POST_FORMATS = ['單圖', '多圖', '假多圖', '短影音', '限動', '純文字', '留言處']
 
 # 選項 (含空白)
 PROJECT_OWNERS = ['', '夢涵', 'MOMO', '櫻樺', '季嫻', '凌萱', '宜婷', '門市']
-POST_OWNERS = ['一千', '楷曜', '可榆']
+POST_OWNERS = ['一千', '可榆']
 DESIGNERS = ['', '千惟', '靖嬙']
 
 # 樣式設定
